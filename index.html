@@ -74,7 +74,7 @@
 <script>
   const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const statusEl = document.getElementById('status');
   const authForm = document.getElementById('authForm');
@@ -99,7 +99,7 @@
       showStatus('Enter an email and password first.', true);
       return;
     }
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
     if (error) {
       showStatus('Sign up failed: ' + error.message, true);
     } else {
@@ -113,7 +113,7 @@
       showStatus('Enter an email and password first.', true);
       return;
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) {
       showStatus('Login failed: ' + error.message, true);
     } else {
@@ -123,13 +123,13 @@
   }
 
   async function logout() {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     showStatus('Logged out.', false);
     checkSession();
   }
 
   async function checkSession() {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
       authForm.style.display = 'none';
       loggedInDiv.style.display = 'block';
