@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 400px;
+    margin: 60px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  p.subtitle { color: #666; margin-top: 0; margin-bottom: 24px; }
+  input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 15px;
+    box-sizing: border-box;
+  }
+  button {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  button.secondary {
+    background: white;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+  }
+  #status {
+    margin-top: 16px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+  #loggedIn { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Scanifest</h1>
+<p class="subtitle">Scan. Track. Unpack.</p>
+
+<div id="authForm">
+  <input type="email" id="email" placeholder="Email" autocomplete="email">
+  <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+  <button onclick="login()">Log In</button>
+  <button class="secondary" onclick="signup()">Sign Up</button>
+</div>
+
+<div id="loggedIn">
+  <p>Logged in as <strong id="userEmail"></strong></p>
+  <button class="secondary" onclick="logout()">Log Out</button>
+</div>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const authForm = document.getElementById('authForm');
+  const loggedInDiv = document.getElementById('loggedIn');
+  const userEmailEl = document.getElementById('userEmail');
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : 'success';
+  }
+
+  function getCredentials() {
+    return {
+      email: document.getElementById('email').value.trim(),
+      password: document.getElementById('password').value
+    };
+  }
+
+  async function signup() {
+    const { email, password } = getCredentials();
+    if (!email || !password) {
+      showStatus('Enter an email and password first.', true);
+      return;
+    }
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      showStatus('Sign up failed: ' + error.message, true);
+    } else {
+      showStatus('Signed up! You can now log in.', false);
+    }
+  }
+
+  async function login() {
+    const { email, password } = getCredentials();
+    if (!email || !password) {
+      showStatus('Enter an email and password first.', true);
+      return;
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      showStatus('Login failed: ' + error.message, true);
+    } else {
+      showStatus('Logged in successfully.', false);
+      checkSession();
+    }
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    showStatus('Logged out.', false);
+    checkSession();
+  }
+
+  async function checkSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      authForm.style.display = 'none';
+      loggedInDiv.style.display = 'block';
+      userEmailEl.textContent = session.user.email;
+    } else {
+      authForm.style.display = 'block';
+      loggedInDiv.style.display = 'none';
+    }
+  }
+
+  checkSession();
+</script>
+
+</body>
+</html>
