@@ -118,7 +118,7 @@
       showStatus('Login failed: ' + error.message, true);
     } else {
       showStatus('Logged in successfully.', false);
-      checkSession();
+      window.location.href = 'shipments.html';
     }
   }
 
@@ -131,9 +131,7 @@
   async function checkSession() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
-      authForm.style.display = 'none';
-      loggedInDiv.style.display = 'block';
-      userEmailEl.textContent = session.user.email;
+      window.location.href = 'shipments.html';
     } else {
       authForm.style.display = 'block';
       loggedInDiv.style.display = 'none';
