@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — Shipments</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  h1 { font-size: 22px; margin: 0; }
+  #userEmail { font-size: 13px; color: #666; }
+  button.logout {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .shipment-card {
+    display: block;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 10px;
+    text-decoration: none;
+    color: #1a1a1a;
+  }
+  .shipment-card:hover { border-color: #999; }
+  .shipment-card .name { font-weight: 600; font-size: 16px; }
+  .shipment-card .route { color: #666; font-size: 13px; margin-top: 4px; }
+  #emptyState { color: #666; font-size: 14px; margin-bottom: 20px; }
+  h2 { font-size: 16px; margin-top: 32px; }
+  input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 15px;
+    box-sizing: border-box;
+  }
+  button.primary {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  #status {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Scanifest</h1>
+    <div id="userEmail"></div>
+  </div>
+  <button class="logout" onclick="logout()">Log out</button>
+</header>
+
+<div id="emptyState" style="display:none;">No shipments yet — create your first one below.</div>
+<div id="shipmentList"></div>
+
+<h2>New shipment</h2>
+<input type="text" id="name" placeholder="Shipment name (e.g. Move to Auckland)">
+<input type="text" id="origin" placeholder="Origin address">
+<input type="text" id="destination" placeholder="Destination address">
+<input type="text" id="originContact" placeholder="Origin contact (name, phone)">
+<input type="text" id="destinationContact" placeholder="Destination contact (name, phone)">
+<button class="primary" onclick="createShipment()">Create shipment</button>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  let currentUser = null;
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : 'success';
+  }
+
+  async function requireAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = 'index.html';
+      return null;
+    }
+    return session.user;
+  }
+
+  async function logout() {
+    await supabaseClient.auth.signOut();
+    window.location.href = 'index.html';
+  }
+
+  async function loadShipments() {
+    const { data, error } = await supabaseClient
+      .from('shipments')
+      .select('*')
+      .order('created_date', { ascending: false });
+
+    if (error) {
+      showStatus('Failed to load shipments: ' + error.message, true);
+      return;
+    }
+
+    const listEl = document.getElementById('shipmentList');
+    const emptyEl = document.getElementById('emptyState');
+    listEl.innerHTML = '';
+
+    if (!data || data.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    data.forEach(shipment => {
+      const a = document.createElement('a');
+      a.className = 'shipment-card';
+      a.href = 'shipment.html?id=' + shipment.id;
+      a.innerHTML = `
+        <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
+        <div class="route">${escapeHtml(shipment.origin || '?')} → ${escapeHtml(shipment.destination || '?')}</div>
+      `;
+      listEl.appendChild(a);
+    });
+  }
+
+  async function createShipment() {
+    const name = document.getElementById('name').value.trim();
+    const origin = document.getElementById('origin').value.trim();
+    const destination = document.getElementById('destination').value.trim();
+    const originContact = document.getElementById('originContact').value.trim();
+    const destinationContact = document.getElementById('destinationContact').value.trim();
+
+    if (!name) {
+      showStatus('Give the shipment a name first.', true);
+      return;
+    }
+
+    const { data, error } = await supabaseClient
+      .from('shipments')
+      .insert({
+        user_id: currentUser.id,
+        name: name,
+        origin: origin,
+        destination: destination,
+        origin_contact: originContact,
+        destination_contact: destinationContact
+      })
+      .select();
+
+    if (error) {
+      showStatus('Failed to create shipment: ' + error.message, true);
+      return;
+    }
+
+    showStatus('Shipment created.', false);
+    document.getElementById('name').value = '';
+    document.getElementById('origin').value = '';
+    document.getElementById('destination').value = '';
+    document.getElementById('originContact').value = '';
+    document.getElementById('destinationContact').value = '';
+
+    // Jump straight into the new shipment
+    if (data && data[0]) {
+      window.location.href = 'shipment.html?id=' + data[0].id;
+    } else {
+      loadShipments();
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function init() {
+    const user = await requireAuth();
+    if (!user) return;
+    currentUser = user;
+    document.getElementById('userEmail').textContent = user.email;
+    loadShipments();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
