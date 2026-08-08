@@ -40,7 +40,7 @@
   }
   .shipment-card:hover { border-color: #999; }
   .shipment-card .name { font-weight: 600; font-size: 16px; }
-  .shipment-card .route { color: #666; font-size: 13px; margin-top: 4px; }
+  .shipment-card .meta { color: #666; font-size: 13px; margin-top: 4px; }
   #emptyState { color: #666; font-size: 14px; margin-bottom: 20px; }
   h2 { font-size: 16px; margin-top: 32px; }
   input {
@@ -88,11 +88,8 @@
 
 <h2>New shipment</h2>
 <input type="text" id="name" placeholder="Shipment name (e.g. Move to Auckland)">
-<input type="text" id="origin" placeholder="Origin address">
-<input type="text" id="destination" placeholder="Destination address">
-<input type="text" id="originContact" placeholder="Origin contact (name, phone)">
-<input type="text" id="destinationContact" placeholder="Destination contact (name, phone)">
 <button class="primary" onclick="createShipment()">Create shipment</button>
+<p style="font-size:13px; color:#666;">You can add the destination and boxes on the next page.</p>
 
 <div id="status"></div>
 
@@ -147,10 +144,13 @@
     data.forEach(shipment => {
       const a = document.createElement('a');
       a.className = 'shipment-card';
-      a.href = 'shipment.html?id=' + shipment.id;
+      a.href = 'shipment_detail.html?id=' + shipment.id;
+      const created = shipment.created_date
+        ? new Date(shipment.created_date).toLocaleDateString()
+        : '';
       a.innerHTML = `
         <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
-        <div class="route">${escapeHtml(shipment.origin || '?')} → ${escapeHtml(shipment.destination || '?')}</div>
+        <div class="meta">Created ${escapeHtml(created)}</div>
       `;
       listEl.appendChild(a);
     });
@@ -158,10 +158,6 @@
 
   async function createShipment() {
     const name = document.getElementById('name').value.trim();
-    const origin = document.getElementById('origin').value.trim();
-    const destination = document.getElementById('destination').value.trim();
-    const originContact = document.getElementById('originContact').value.trim();
-    const destinationContact = document.getElementById('destinationContact').value.trim();
 
     if (!name) {
       showStatus('Give the shipment a name first.', true);
@@ -172,11 +168,7 @@
       .from('shipments')
       .insert({
         user_id: currentUser.id,
-        name: name,
-        origin: origin,
-        destination: destination,
-        origin_contact: originContact,
-        destination_contact: destinationContact
+        name: name
       })
       .select();
 
@@ -187,14 +179,10 @@
 
     showStatus('Shipment created.', false);
     document.getElementById('name').value = '';
-    document.getElementById('origin').value = '';
-    document.getElementById('destination').value = '';
-    document.getElementById('originContact').value = '';
-    document.getElementById('destinationContact').value = '';
 
-    // Jump straight into the new shipment
+    // Jump straight into the new shipment to fill in destination + boxes
     if (data && data[0]) {
-      window.location.href = 'shipment.html?id=' + data[0].id;
+      window.location.href = 'shipment_detail.html?id=' + data[0].id;
     } else {
       loadShipments();
     }
