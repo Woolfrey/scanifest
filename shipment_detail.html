@@ -207,8 +207,8 @@
       return;
     }
     if (data) {
-      document.getElementById('contactName').value = data.contact_name || '';
-      document.getElementById('contactPhone').value = data.contact_phone || '';
+      document.getElementById('contactName').value = data.name || '';
+      document.getElementById('contactPhone').value = data.phone || '';
       document.getElementById('addressLine1').value = data.address_line_1 || '';
       document.getElementById('addressLine2').value = data.address_line_2 || '';
       document.getElementById('suburb').value = data.suburb || '';
@@ -221,8 +221,8 @@
   async function saveDestination() {
     const payload = {
       shipment_id: shipmentId,
-      contact_name: document.getElementById('contactName').value.trim(),
-      contact_phone: document.getElementById('contactPhone').value.trim(),
+      name: document.getElementById('contactName').value.trim(),
+      phone: document.getElementById('contactPhone').value.trim(),
       address_line_1: document.getElementById('addressLine1').value.trim(),
       address_line_2: document.getElementById('addressLine2').value.trim(),
       suburb: document.getElementById('suburb').value.trim(),
