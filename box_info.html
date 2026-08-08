@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — Box</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  a.back, a.edit-link {
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+  }
+  a.edit-link {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #1a1a1a;
+  }
+  h1 { font-size: 24px; margin: 4px 0; }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-left: 6px;
+    background: #f0f0f0;
+    color: #555;
+  }
+  .dims { color: #666; font-size: 14px; margin-bottom: 20px; }
+  h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
+  .item-row {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .item-row .desc { font-weight: 600; font-size: 14px; }
+  .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
+  #emptyItems { color: #666; font-size: 14px; }
+  #status {
+    margin-top: 16px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" id="backLink" href="shipments.html">← Back</a>
+  <a class="edit-link" id="editLink" href="#" style="display:none;">Edit</a>
+</header>
+
+<div id="content" style="display:none;">
+  <h1 id="roomName"></h1>
+  <div class="dims" id="dims"></div>
+
+  <h2>Items in this box</h2>
+  <div id="emptyItems" style="display:none;">No items recorded in this box yet.</div>
+  <div id="itemList"></div>
+</div>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const params = new URLSearchParams(window.location.search);
+  const boxId = params.get('id');
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : '';
+    statusEl.style.display = message ? 'block' : 'none';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function loadBox() {
+    const { data: box, error } = await supabaseClient
+      .from('boxes')
+      .select('*')
+      .eq('id', boxId)
+      .maybeSingle();
+
+    if (error || !box) {
+      showStatus('This box doesn\'t exist, or is set to private.', true);
+      return;
+    }
+
+    document.getElementById('content').style.display = 'block';
+
+    let badges = '';
+    if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
+    if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
+    document.getElementById('roomName').innerHTML = escapeHtml(box.room || 'Unassigned room') + badges;
+
+    const unit = box.metric === false ? 'in' : 'cm';
+    const weightUnit = box.metric === false ? 'lb' : 'kg';
+    let dimsText = '';
+    if (box.height && box.width && box.length) {
+      dimsText += `${box.height} × ${box.width} × ${box.length} ${unit}`;
+    }
+    if (box.weight) {
+      dimsText += (dimsText ? ' · ' : '') + `${box.weight} ${weightUnit}`;
+    }
+    document.getElementById('dims').textContent = dimsText || 'No dimensions recorded';
+
+    // Check if the current user owns the parent shipment (RLS-enforced) - if so, show Edit link
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session) {
+      const { data: ownedShipment } = await supabaseClient
+        .from('shipments')
+        .select('id')
+        .eq('id', box.shipment_id)
+        .maybeSingle();
+      if (ownedShipment) {
+        const editLink = document.getElementById('editLink');
+        editLink.href = 'box_detail.html?id=' + boxId;
+        editLink.style.display = 'inline-block';
+        document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
+      }
+    }
+
+    loadItems();
+  }
+
+  async function loadItems() {
+    const { data, error } = await supabaseClient
+      .from('items')
+      .select('*')
+      .eq('box_id', boxId);
+
+    const listEl = document.getElementById('itemList');
+    const emptyEl = document.getElementById('emptyItems');
+    listEl.innerHTML = '';
+
+    if (error || !data || data.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    data.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      const metaParts = [];
+      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
+      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
+      if (item.material) metaParts.push(item.material);
+      div.innerHTML = `
+        <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
+        <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
+      `;
+      listEl.appendChild(div);
+    });
+  }
+
+  if (!boxId) {
+    showStatus('No box specified.', true);
+  } else {
+    loadBox();
+  }
+</script>
+
+</body>
+</html>
