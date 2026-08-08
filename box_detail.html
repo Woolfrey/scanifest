@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — Edit Box</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  a.back, a.view-link {
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+  }
+  a.view-link {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #1a1a1a;
+  }
+  h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
+  input[type=text], input[type=number] {
+    width: 100%;
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  input:focus { outline: none; border-color: #1a1a1a; }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .field-grid input { margin-bottom: 0; }
+  label.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  .item-row {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .item-row .desc { font-weight: 600; font-size: 14px; }
+  .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
+  button.delete-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #c0392b;
+    font-size: 12px;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
+  #emptyItems { color: #666; font-size: 14px; margin-bottom: 10px; }
+  button.primary {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  #status, #saveIndicator {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+  }
+  #status.success, #saveIndicator.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
+  <a class="view-link" id="viewLink" href="#">View public page</a>
+</header>
+
+<div id="editForm" style="display:none;">
+  <h2>Box details</h2>
+  <input type="text" id="room" placeholder="Room (e.g. Kitchen)">
+
+  <div class="field-grid">
+    <input type="number" step="any" id="height" placeholder="Height">
+    <input type="number" step="any" id="width" placeholder="Width">
+    <input type="number" step="any" id="length" placeholder="Length">
+  </div>
+  <input type="number" step="any" id="weight" placeholder="Weight">
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="metric">
+    Use metric units (unchecked = imperial)
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="isHeavy">
+    Heavy
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="isFragile">
+    Fragile
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="isPublic">
+    Visible to anyone who scans the QR code (uncheck to make private)
+  </label>
+
+  <button class="primary" onclick="saveAll()">Save</button>
+  <div id="saveIndicator">Saved</div>
+
+  <h2>Items</h2>
+  <div id="emptyItems" style="display:none;">No items yet — add one below.</div>
+  <div id="itemList"></div>
+
+  <h2>Add item</h2>
+  <input type="text" id="itemDescription" placeholder="Description">
+  <div class="field-grid">
+    <input type="number" id="itemQuantity" placeholder="Qty" value="1">
+    <input type="text" id="itemCategory" placeholder="Category">
+    <input type="text" id="itemSubcategory" placeholder="Subcategory">
+  </div>
+  <input type="text" id="itemMaterial" placeholder="Material (optional)">
+  <button class="primary" onclick="addItem()">+ Add item</button>
+</div>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const saveIndicator = document.getElementById('saveIndicator');
+  const params = new URLSearchParams(window.location.search);
+  const boxId = params.get('id');
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : 'success';
+    statusEl.style.display = message ? 'block' : 'none';
+  }
+
+  function flashSaved() {
+    saveIndicator.textContent = 'Saved';
+    saveIndicator.className = 'success';
+    saveIndicator.style.display = 'block';
+    clearTimeout(flashSaved._t);
+    flashSaved._t = setTimeout(() => { saveIndicator.style.display = 'none'; }, 1500);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function requireAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = 'index.html';
+      return null;
+    }
+    return session.user;
+  }
+
+  async function loadBox() {
+    const { data: box, error } = await supabaseClient
+      .from('boxes')
+      .select('*')
+      .eq('id', boxId)
+      .maybeSingle();
+
+    if (error || !box) {
+      showStatus('Could not load this box, or you don\'t have permission to edit it.', true);
+      return;
+    }
+
+    // Confirm ownership via the shipment chain (RLS would block writes anyway, but check
+    // up front so the form doesn't appear editable only to fail silently on save)
+    const { data: ownedShipment } = await supabaseClient
+      .from('shipments')
+      .select('id')
+      .eq('id', box.shipment_id)
+      .maybeSingle();
+
+    if (!ownedShipment) {
+      showStatus('You don\'t have permission to edit this box.', true);
+      return;
+    }
+
+    document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
+    document.getElementById('viewLink').href = 'box_info.html?id=' + boxId;
+
+    document.getElementById('room').value = box.room || '';
+    document.getElementById('height').value = box.height ?? '';
+    document.getElementById('width').value = box.width ?? '';
+    document.getElementById('length').value = box.length ?? '';
+    document.getElementById('weight').value = box.weight ?? '';
+    document.getElementById('metric').checked = box.metric !== false;
+    document.getElementById('isHeavy').checked = !!box.is_heavy;
+    document.getElementById('isFragile').checked = !!box.is_fragile;
+    document.getElementById('isPublic').checked = box.is_public !== false;
+
+    document.getElementById('editForm').style.display = 'block';
+    loadItems();
+  }
+
+  async function saveAll() {
+    const payload = {
+      room: document.getElementById('room').value.trim(),
+      height: document.getElementById('height').value === '' ? null : parseFloat(document.getElementById('height').value),
+      width: document.getElementById('width').value === '' ? null : parseFloat(document.getElementById('width').value),
+      length: document.getElementById('length').value === '' ? null : parseFloat(document.getElementById('length').value),
+      weight: document.getElementById('weight').value === '' ? null : parseFloat(document.getElementById('weight').value),
+      metric: document.getElementById('metric').checked,
+      is_heavy: document.getElementById('isHeavy').checked,
+      is_fragile: document.getElementById('isFragile').checked,
+      is_public: document.getElementById('isPublic').checked
+    };
+
+    const { error } = await supabaseClient.from('boxes').update(payload).eq('id', boxId);
+    if (error) {
+      showStatus('Failed to save: ' + error.message, true);
+    } else {
+      flashSaved();
+    }
+  }
+
+  async function loadItems() {
+    const { data, error } = await supabaseClient
+      .from('items')
+      .select('*')
+      .eq('box_id', boxId);
+
+    const listEl = document.getElementById('itemList');
+    const emptyEl = document.getElementById('emptyItems');
+    listEl.innerHTML = '';
+
+    if (error || !data || data.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    data.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      const metaParts = [];
+      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
+      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
+      if (item.material) metaParts.push(item.material);
+      div.innerHTML = `
+        <div>
+          <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
+          <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
+        </div>
+        <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+      `;
+      listEl.appendChild(div);
+    });
+  }
+
+  async function addItem() {
+    const description = document.getElementById('itemDescription').value.trim();
+    if (!description) {
+      showStatus('Give the item a description first.', true);
+      return;
+    }
+    const quantityRaw = document.getElementById('itemQuantity').value;
+    const payload = {
+      box_id: boxId,
+      description: description,
+      quantity: quantityRaw ? parseInt(quantityRaw, 10) : 1,
+      category: document.getElementById('itemCategory').value.trim(),
+      subcategory: document.getElementById('itemSubcategory').value.trim(),
+      material: document.getElementById('itemMaterial').value.trim()
+    };
+
+    const { error } = await supabaseClient.from('items').insert(payload);
+    if (error) {
+      showStatus('Failed to add item: ' + error.message, true);
+      return;
+    }
+
+    document.getElementById('itemDescription').value = '';
+    document.getElementById('itemQuantity').value = '1';
+    document.getElementById('itemCategory').value = '';
+    document.getElementById('itemSubcategory').value = '';
+    document.getElementById('itemMaterial').value = '';
+    showStatus('Item added.', false);
+    loadItems();
+  }
+
+  async function deleteItem(itemId) {
+    const { error } = await supabaseClient.from('items').delete().eq('id', itemId);
+    if (error) {
+      showStatus('Failed to remove item: ' + error.message, true);
+      return;
+    }
+    loadItems();
+  }
+
+  async function init() {
+    if (!boxId) {
+      showStatus('No box specified.', true);
+      return;
+    }
+    const user = await requireAuth();
+    if (!user) return;
+    loadBox();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
