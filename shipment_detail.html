@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — Shipment</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  a.back {
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+  }
+  h1 {
+    font-size: 22px;
+    margin: 4px 0 0 0;
+    border: none;
+    padding: 4px 0;
+    width: 100%;
+  }
+  input.name-input {
+    font-size: 22px;
+    font-weight: 700;
+    border: none;
+    padding: 4px 0;
+    width: 100%;
+    font-family: inherit;
+    color: #1a1a1a;
+  }
+  input.name-input:focus {
+    outline: none;
+    border-bottom: 2px solid #1a1a1a;
+  }
+  h2 { font-size: 15px; margin-top: 28px; margin-bottom: 10px; color: #444; }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .field-grid input { margin-bottom: 0; }
+  input {
+    width: 100%;
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  input:focus { outline: none; border-color: #1a1a1a; }
+  .box-card {
+    display: block;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    text-decoration: none;
+    color: #1a1a1a;
+  }
+  .box-card:hover { border-color: #999; }
+  .box-card .room { font-weight: 600; font-size: 15px; }
+  .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    background: #f0f0f0;
+    color: #555;
+  }
+  #emptyBoxes { color: #666; font-size: 14px; margin-bottom: 12px; }
+  button.primary {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  #status, #saveIndicator {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+  }
+  #status.success, #saveIndicator.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="shipments.html">← All shipments</a>
+</header>
+
+<input type="text" id="shipmentName" class="name-input" placeholder="Shipment name" onblur="saveShipmentName()">
+
+<h2>Destination</h2>
+<input type="text" id="contactName" placeholder="Contact name" onblur="saveDestination()">
+<input type="text" id="contactPhone" placeholder="Contact phone" onblur="saveDestination()">
+<input type="text" id="addressLine1" placeholder="Address line 1" onblur="saveDestination()">
+<input type="text" id="addressLine2" placeholder="Address line 2" onblur="saveDestination()">
+<div class="field-grid">
+  <input type="text" id="suburb" placeholder="Suburb" onblur="saveDestination()">
+  <input type="text" id="postcode" placeholder="Postcode" onblur="saveDestination()">
+</div>
+<div class="field-grid">
+  <input type="text" id="state" placeholder="State" onblur="saveDestination()">
+  <input type="text" id="country" placeholder="Country" onblur="saveDestination()">
+</div>
+<div id="saveIndicator">Saved</div>
+
+<h2>Boxes</h2>
+<div id="emptyBoxes" style="display:none;">No boxes yet — add your first one below.</div>
+<div id="boxList"></div>
+<button class="primary" onclick="addBox()">+ Add box</button>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const saveIndicator = document.getElementById('saveIndicator');
+  const params = new URLSearchParams(window.location.search);
+  const shipmentId = params.get('id');
+  let currentUser = null;
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : 'success';
+  }
+
+  function flashSaved() {
+    saveIndicator.textContent = 'Saved';
+    saveIndicator.className = 'success';
+    clearTimeout(flashSaved._t);
+    flashSaved._t = setTimeout(() => { saveIndicator.style.display = 'none'; }, 1500);
+  }
+
+  async function requireAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = 'index.html';
+      return null;
+    }
+    return session.user;
+  }
+
+  async function loadShipment() {
+    const { data, error } = await supabaseClient
+      .from('shipments')
+      .select('*')
+      .eq('id', shipmentId)
+      .single();
+
+    if (error || !data) {
+      showStatus('Could not load this shipment (it may not exist, or you may not have access).', true);
+      return;
+    }
+    document.getElementById('shipmentName').value = data.name || '';
+  }
+
+  async function saveShipmentName() {
+    const name = document.getElementById('shipmentName').value.trim();
+    if (!name) return;
+    const { error } = await supabaseClient
+      .from('shipments')
+      .update({ name })
+      .eq('id', shipmentId);
+    if (error) {
+      showStatus('Failed to save shipment name: ' + error.message, true);
+    } else {
+      flashSaved();
+    }
+  }
+
+  async function loadDestination() {
+    const { data, error } = await supabaseClient
+      .from('destination')
+      .select('*')
+      .eq('shipment_id', shipmentId)
+      .maybeSingle();
+
+    if (error) {
+      showStatus('Failed to load destination: ' + error.message, true);
+      return;
+    }
+    if (data) {
+      document.getElementById('contactName').value = data.contact_name || '';
+      document.getElementById('contactPhone').value = data.contact_phone || '';
+      document.getElementById('addressLine1').value = data.address_line_1 || '';
+      document.getElementById('addressLine2').value = data.address_line_2 || '';
+      document.getElementById('suburb').value = data.suburb || '';
+      document.getElementById('postcode').value = data.postcode || '';
+      document.getElementById('state').value = data.state || '';
+      document.getElementById('country').value = data.country || '';
+    }
+  }
+
+  async function saveDestination() {
+    const payload = {
+      shipment_id: shipmentId,
+      contact_name: document.getElementById('contactName').value.trim(),
+      contact_phone: document.getElementById('contactPhone').value.trim(),
+      address_line_1: document.getElementById('addressLine1').value.trim(),
+      address_line_2: document.getElementById('addressLine2').value.trim(),
+      suburb: document.getElementById('suburb').value.trim(),
+      postcode: document.getElementById('postcode').value.trim(),
+      state: document.getElementById('state').value.trim(),
+      country: document.getElementById('country').value.trim()
+    };
+
+    // Upsert on shipment_id, since destination is one-to-one with shipments
+    const { error } = await supabaseClient
+      .from('destination')
+      .upsert(payload, { onConflict: 'shipment_id' });
+
+    if (error) {
+      showStatus('Failed to save destination: ' + error.message, true);
+    } else {
+      flashSaved();
+    }
+  }
+
+  async function loadBoxes() {
+    const { data, error } = await supabaseClient
+      .from('boxes')
+      .select('*')
+      .eq('shipment_id', shipmentId);
+
+    if (error) {
+      showStatus('Failed to load boxes: ' + error.message, true);
+      return;
+    }
+
+    const listEl = document.getElementById('boxList');
+    const emptyEl = document.getElementById('emptyBoxes');
+    listEl.innerHTML = '';
+
+    if (!data || data.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    data.forEach(box => {
+      const a = document.createElement('a');
+      a.className = 'box-card';
+      a.href = 'box_detail.html?id=' + box.id;
+      const dims = (box.height && box.width && box.length)
+        ? `${box.height} × ${box.width} × ${box.length}${box.metric === false ? ' in' : ' cm'}`
+        : 'Dimensions not set';
+      let badges = '';
+      if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
+      if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
+      if (box.is_public === false) badges += '<span class="badge">Private</span>';
+      a.innerHTML = `
+        <div class="room">${escapeHtml(box.room || 'Unassigned room')}${badges}</div>
+        <div class="meta">${escapeHtml(dims)}</div>
+      `;
+      listEl.appendChild(a);
+    });
+  }
+
+  async function addBox() {
+    const { data, error } = await supabaseClient
+      .from('boxes')
+      .insert({
+        shipment_id: shipmentId,
+        is_public: true,
+        is_heavy: false,
+        is_fragile: false
+      })
+      .select();
+
+    if (error) {
+      showStatus('Failed to add box: ' + error.message, true);
+      return;
+    }
+
+    if (data && data[0]) {
+      window.location.href = 'box_detail.html?id=' + data[0].id;
+    } else {
+      loadBoxes();
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function init() {
+    if (!shipmentId) {
+      showStatus('No shipment specified.', true);
+      return;
+    }
+    const user = await requireAuth();
+    if (!user) return;
+    currentUser = user;
+    await loadShipment();
+    await loadDestination();
+    await loadBoxes();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
