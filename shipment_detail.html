@@ -111,21 +111,22 @@
   <a class="back" href="shipments.html">← All shipments</a>
 </header>
 
-<input type="text" id="shipmentName" class="name-input" placeholder="Shipment name" onblur="saveShipmentName()">
+<input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
 
 <h2>Destination</h2>
-<input type="text" id="contactName" placeholder="Contact name" onblur="saveDestination()">
-<input type="text" id="contactPhone" placeholder="Contact phone" onblur="saveDestination()">
-<input type="text" id="addressLine1" placeholder="Address line 1" onblur="saveDestination()">
-<input type="text" id="addressLine2" placeholder="Address line 2" onblur="saveDestination()">
+<input type="text" id="contactName" placeholder="Contact name">
+<input type="text" id="contactPhone" placeholder="Contact phone">
+<input type="text" id="addressLine1" placeholder="Address line 1">
+<input type="text" id="addressLine2" placeholder="Address line 2">
 <div class="field-grid">
-  <input type="text" id="suburb" placeholder="Suburb" onblur="saveDestination()">
-  <input type="text" id="postcode" placeholder="Postcode" onblur="saveDestination()">
+  <input type="text" id="suburb" placeholder="Suburb">
+  <input type="text" id="postcode" placeholder="Postcode">
 </div>
 <div class="field-grid">
-  <input type="text" id="state" placeholder="State" onblur="saveDestination()">
-  <input type="text" id="country" placeholder="Country" onblur="saveDestination()">
+  <input type="text" id="state" placeholder="State">
+  <input type="text" id="country" placeholder="Country">
 </div>
+<button class="primary" onclick="saveAll()">Save</button>
 <div id="saveIndicator">Saved</div>
 
 <h2>Boxes</h2>
@@ -181,18 +182,45 @@
     document.getElementById('shipmentName').value = data.name || '';
   }
 
-  async function saveShipmentName() {
+  async function saveAll() {
     const name = document.getElementById('shipmentName').value.trim();
-    if (!name) return;
-    const { error } = await supabaseClient
+    if (!name) {
+      showStatus('Give the shipment a name first.', true);
+      return;
+    }
+
+    const { error: nameError } = await supabaseClient
       .from('shipments')
       .update({ name })
       .eq('id', shipmentId);
-    if (error) {
-      showStatus('Failed to save shipment name: ' + error.message, true);
-    } else {
-      flashSaved();
+
+    if (nameError) {
+      showStatus('Failed to save shipment name: ' + nameError.message, true);
+      return;
     }
+
+    const payload = {
+      shipment_id: shipmentId,
+      name: document.getElementById('contactName').value.trim(),
+      phone: document.getElementById('contactPhone').value.trim(),
+      address_line_1: document.getElementById('addressLine1').value.trim(),
+      address_line_2: document.getElementById('addressLine2').value.trim(),
+      suburb: document.getElementById('suburb').value.trim(),
+      postcode: document.getElementById('postcode').value.trim(),
+      state: document.getElementById('state').value.trim(),
+      country: document.getElementById('country').value.trim()
+    };
+
+    const { error: destError } = await supabaseClient
+      .from('destination')
+      .upsert(payload, { onConflict: 'shipment_id' });
+
+    if (destError) {
+      showStatus('Failed to save destination: ' + destError.message, true);
+      return;
+    }
+
+    flashSaved();
   }
 
   async function loadDestination() {
@@ -215,31 +243,6 @@
       document.getElementById('postcode').value = data.postcode || '';
       document.getElementById('state').value = data.state || '';
       document.getElementById('country').value = data.country || '';
-    }
-  }
-
-  async function saveDestination() {
-    const payload = {
-      shipment_id: shipmentId,
-      name: document.getElementById('contactName').value.trim(),
-      phone: document.getElementById('contactPhone').value.trim(),
-      address_line_1: document.getElementById('addressLine1').value.trim(),
-      address_line_2: document.getElementById('addressLine2').value.trim(),
-      suburb: document.getElementById('suburb').value.trim(),
-      postcode: document.getElementById('postcode').value.trim(),
-      state: document.getElementById('state').value.trim(),
-      country: document.getElementById('country').value.trim()
-    };
-
-    // Upsert on shipment_id, since destination is one-to-one with shipments
-    const { error } = await supabaseClient
-      .from('destination')
-      .upsert(payload, { onConflict: 'shipment_id' });
-
-    if (error) {
-      showStatus('Failed to save destination: ' + error.message, true);
-    } else {
-      flashSaved();
     }
   }
 
