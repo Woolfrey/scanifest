@@ -179,7 +179,7 @@
       const volume = shipment.total_volume ?? 0;
       const weight = shipment.total_weight ?? 0;
       const dest = destByShipment[shipment.id];
-      const destParts = dest ? [dest.suburb, dest.state, dest.country].filter(Boolean) : [];
+      const destParts = dest ? [`Destination: ${dest.suburb}`, dest.state, dest.country].filter(Boolean) : [];
 
       const row = document.createElement('div');
       row.className = 'shipment-row';
