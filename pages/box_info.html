@@ -50,7 +50,7 @@
   }
   .item-row .desc { font-weight: 600; font-size: 14px; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
-  #emptyItems { color: #666; font-size: 14px; }
+  #emptyItems, #privateNotice { color: #666; font-size: 14px; }
   #status {
     margin-top: 16px;
     padding: 10px;
@@ -73,6 +73,7 @@
   <div class="dims" id="dims"></div>
 
   <h2>Items in this box</h2>
+  <div id="privateNotice" style="display:none;">Contents of this box are private.</div>
   <div id="emptyItems" style="display:none;">No items recorded in this box yet.</div>
   <div id="itemList"></div>
 </div>
@@ -108,7 +109,7 @@
       .maybeSingle();
 
     if (error || !box) {
-      showStatus('This box doesn\'t exist, or is set to private.', true);
+      showStatus('This box doesn\'t exist.', true);
       return;
     }
 
@@ -119,8 +120,8 @@
     if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
     document.getElementById('roomName').innerHTML = escapeHtml(box.room || 'Unassigned room') + badges;
 
-    const unit = box.metric === false ? 'in' : 'cm';
-    const weightUnit = box.metric === false ? 'lb' : 'kg';
+    const unit = box.is_imperial ? 'in' : 'cm';
+    const weightUnit = box.is_imperial ? 'lb' : 'kg';
     let dimsText = '';
     if (box.height && box.width && box.length) {
       dimsText += `${box.height} × ${box.width} × ${box.length} ${unit}`;
@@ -131,6 +132,7 @@
     document.getElementById('dims').textContent = dimsText || 'No dimensions recorded';
 
     // Check if the current user owns the parent shipment (RLS-enforced) - if so, show Edit link
+    let isOwner = false;
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
       const { data: ownedShipment } = await supabaseClient
@@ -139,11 +141,19 @@
         .eq('id', box.shipment_id)
         .maybeSingle();
       if (ownedShipment) {
+        isOwner = true;
         const editLink = document.getElementById('editLink');
         editLink.href = 'box_detail.html?id=' + boxId;
         editLink.style.display = 'inline-block';
         document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
       }
+    }
+
+    // Private boxes: hide the item list from anyone who isn't the owner,
+    // but the box's own metadata above (room, dims, flags) still shows.
+    if (box.is_private && !isOwner) {
+      document.getElementById('privateNotice').style.display = 'block';
+      return;
     }
 
     loadItems();

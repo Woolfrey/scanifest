@@ -116,8 +116,8 @@
   <input type="number" step="any" id="weight" placeholder="Weight">
 
   <label class="checkbox-row">
-    <input type="checkbox" id="metric">
-    Use metric units (unchecked = imperial)
+    <input type="checkbox" id="isImperial">
+    Use imperial units (unchecked = metric)
   </label>
   <label class="checkbox-row">
     <input type="checkbox" id="isHeavy">
@@ -128,8 +128,8 @@
     Fragile
   </label>
   <label class="checkbox-row">
-    <input type="checkbox" id="isPublic">
-    Visible to anyone who scans the QR code (uncheck to make private)
+    <input type="checkbox" id="isPrivate">
+    Make private (hides contents from anyone who scans the QR code)
   </label>
 
   <button class="primary" onclick="saveAll()">Save</button>
@@ -185,7 +185,7 @@
   async function requireAuth() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (!session) {
-      window.location.href = 'index.html';
+      window.location.href = '../index.html';
       return null;
     }
     return session.user;
@@ -203,8 +203,6 @@
       return;
     }
 
-    // Confirm ownership via the shipment chain (RLS would block writes anyway, but check
-    // up front so the form doesn't appear editable only to fail silently on save)
     const { data: ownedShipment } = await supabaseClient
       .from('shipments')
       .select('id')
@@ -224,10 +222,10 @@
     document.getElementById('width').value = box.width ?? '';
     document.getElementById('length').value = box.length ?? '';
     document.getElementById('weight').value = box.weight ?? '';
-    document.getElementById('metric').checked = box.metric !== false;
+    document.getElementById('isImperial').checked = !!box.is_imperial;
     document.getElementById('isHeavy').checked = !!box.is_heavy;
     document.getElementById('isFragile').checked = !!box.is_fragile;
-    document.getElementById('isPublic').checked = box.is_public !== false;
+    document.getElementById('isPrivate').checked = !!box.is_private;
 
     document.getElementById('editForm').style.display = 'block';
     loadItems();
@@ -240,10 +238,10 @@
       width: document.getElementById('width').value === '' ? null : parseFloat(document.getElementById('width').value),
       length: document.getElementById('length').value === '' ? null : parseFloat(document.getElementById('length').value),
       weight: document.getElementById('weight').value === '' ? null : parseFloat(document.getElementById('weight').value),
-      metric: document.getElementById('metric').checked,
+      is_imperial: document.getElementById('isImperial').checked,
       is_heavy: document.getElementById('isHeavy').checked,
       is_fragile: document.getElementById('isFragile').checked,
-      is_public: document.getElementById('isPublic').checked
+      is_private: document.getElementById('isPrivate').checked
     };
 
     const { error } = await supabaseClient.from('boxes').update(payload).eq('id', boxId);

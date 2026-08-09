@@ -118,7 +118,7 @@
       showStatus('Login failed: ' + error.message, true);
     } else {
       showStatus('Logged in successfully.', false);
-      window.location.href = 'shipments.html';
+      window.location.href = 'pages/shipments.html';
     }
   }
 
@@ -131,7 +131,7 @@
   async function checkSession() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
-      window.location.href = 'shipments.html';
+      window.location.href = 'pages/shipments.html';
     } else {
       authForm.style.display = 'block';
       loggedInDiv.style.display = 'none';

@@ -109,7 +109,7 @@
   async function requireAuth() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (!session) {
-      window.location.href = 'index.html';
+      window.location.href = '../index.html';
       return null;
     }
     return session.user;
@@ -117,14 +117,14 @@
 
   async function logout() {
     await supabaseClient.auth.signOut();
-    window.location.href = 'index.html';
+    window.location.href = '../index.html';
   }
 
   async function loadShipments() {
     const { data, error } = await supabaseClient
       .from('shipments')
       .select('*')
-      .order('name', { ascending: false });
+      .order('created_date', { ascending: false });
 
     if (error) {
       showStatus('Failed to load shipments: ' + error.message, true);
@@ -145,8 +145,8 @@
       const a = document.createElement('a');
       a.className = 'shipment-card';
       a.href = 'shipment_detail.html?id=' + shipment.id;
-      const created = shipment.created_at
-        ? new Date(shipment.created_at).toLocaleDateString()
+      const created = shipment.created_date
+        ? new Date(shipment.created_date).toLocaleDateString()
         : '';
       a.innerHTML = `
         <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
@@ -180,7 +180,6 @@
     showStatus('Shipment created.', false);
     document.getElementById('name').value = '';
 
-    // Jump straight into the new shipment to fill in destination + boxes
     if (data && data[0]) {
       window.location.href = 'shipment_detail.html?id=' + data[0].id;
     } else {

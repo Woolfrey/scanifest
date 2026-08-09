@@ -162,7 +162,7 @@
   async function requireAuth() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (!session) {
-      window.location.href = 'index.html';
+      window.location.href = '../index.html';
       return null;
     }
     return session.user;
@@ -250,7 +250,8 @@
     const { data, error } = await supabaseClient
       .from('boxes')
       .select('*')
-      .eq('shipment_id', shipmentId);
+      .eq('shipment_id', shipmentId)
+      .order('created_date', { ascending: true });
 
     if (error) {
       showStatus('Failed to load boxes: ' + error.message, true);
@@ -271,13 +272,14 @@
       const a = document.createElement('a');
       a.className = 'box-card';
       a.href = 'box_detail.html?id=' + box.id;
+      const unit = box.is_imperial ? 'in' : 'cm';
       const dims = (box.height && box.width && box.length)
-        ? `${box.height} × ${box.width} × ${box.length}${box.metric === false ? ' in' : ' cm'}`
+        ? `${box.height} × ${box.width} × ${box.length} ${unit}`
         : 'Dimensions not set';
       let badges = '';
       if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
       if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
-      if (box.is_public === false) badges += '<span class="badge">Private</span>';
+      if (box.is_private) badges += '<span class="badge">Private</span>';
       a.innerHTML = `
         <div class="room">${escapeHtml(box.room || 'Unassigned room')}${badges}</div>
         <div class="meta">${escapeHtml(dims)}</div>
@@ -291,7 +293,7 @@
       .from('boxes')
       .insert({
         shipment_id: shipmentId,
-        is_public: true,
+        is_private: false,
         is_heavy: false,
         is_fragile: false
       })
