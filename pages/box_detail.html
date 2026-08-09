@@ -65,6 +65,21 @@
   }
   .item-row .desc { font-weight: 600; font-size: 14px; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
+  .item-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: 10px;
+  }
+  button.move-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #1a1a1a;
+    font-size: 12px;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
   button.delete-btn {
     background: none;
     border: 1px solid #ddd;
@@ -280,7 +295,10 @@
           <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
           <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
         </div>
-        <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+        <div class="item-actions">
+          <button class="move-btn" onclick="moveItem('${item.id}')">Move To Box</button>
+          <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+        </div>
       `;
       listEl.appendChild(div);
     });
@@ -314,6 +332,74 @@
     document.getElementById('itemSubcategory').value = '';
     document.getElementById('itemMaterial').value = '';
     showStatus('Item added.', false);
+    loadItems();
+  }
+
+  async function moveItem(itemId) {
+    const { data: currentBox, error: currentBoxError } = await supabaseClient
+      .from('boxes')
+      .select('shipment_id')
+      .eq('id', boxId)
+      .maybeSingle();
+
+    if (currentBoxError || !currentBox) {
+      showStatus('Could not determine this box shipment.', true);
+      return;
+    }
+
+    let { data: boxes, error: boxesError } = await supabaseClient
+      .from('boxes')
+      .select('id, room')
+      .eq('shipment_id', currentBox.shipment_id)
+      .neq('id', boxId)
+      .order('created_at', { ascending: true });
+
+    if (boxesError) {
+      const fallback = await supabaseClient
+        .from('boxes')
+        .select('id, room')
+        .eq('shipment_id', currentBox.shipment_id)
+        .neq('id', boxId)
+        .order('created_date', { ascending: true });
+
+      if (fallback.error) {
+        showStatus('Failed to load destination boxes: ' + boxesError.message, true);
+        return;
+      }
+      boxes = fallback.data || [];
+    }
+
+    if (!boxes.length) {
+      showStatus('There are no other boxes in this shipment.', true);
+      return;
+    }
+
+    const choices = boxes.map((box, index) =>
+      `${index + 1}: ${box.room || 'Unassigned room'}`
+    ).join('\n');
+
+    const answer = prompt('Enter the number of the box to move this item to:\n\n' + choices);
+    if (answer === null) return;
+
+    const choice = parseInt(answer.trim(), 10);
+    if (!Number.isInteger(choice) || choice < 1 || choice > boxes.length) {
+      showStatus('Invalid destination box.', true);
+      return;
+    }
+
+    const destinationBoxId = boxes[choice - 1].id;
+
+    const { error } = await supabaseClient
+      .from('items')
+      .update({ box_id: destinationBoxId })
+      .eq('id', itemId);
+
+    if (error) {
+      showStatus('Failed to move item: ' + error.message, true);
+      return;
+    }
+
+    showStatus('Item moved.', false);
     loadItems();
   }
 

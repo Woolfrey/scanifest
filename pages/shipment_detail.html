@@ -31,6 +31,18 @@
     padding: 4px 0;
     width: 100%;
   }
+  .shipment-summary {
+    color: #666;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 2px 0 8px;
+  }
+  .box-card-wrap {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   input.name-input {
     font-size: 22px;
     font-weight: 700;
@@ -62,17 +74,29 @@
   }
   input:focus { outline: none; border-color: #1a1a1a; }
   .box-card {
+    flex: 1;
     display: block;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 12px;
-    margin-bottom: 8px;
     text-decoration: none;
     color: #1a1a1a;
   }
   .box-card:hover { border-color: #999; }
-  .box-card .room { font-weight: 600; font-size: 15px; }
-  .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; }
+  .box-card .box-number { font-weight: 700; font-size: 15px; }
+  .box-card .room { font-weight: 600; font-size: 14px; margin-top: 3px; }
+  .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; line-height: 1.5; }
+  button.delete-box {
+    align-self: stretch;
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    color: #c0392b;
+    font-size: 12px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  button.delete-box:hover { border-color: #c0392b; }
   .badge {
     display: inline-block;
     font-size: 11px;
@@ -112,6 +136,7 @@
 </header>
 
 <input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
+<div id="shipmentSummary" class="shipment-summary"></div>
 
 <h2>Destination</h2>
 <input type="text" id="contactName" placeholder="Contact name">
@@ -251,41 +276,200 @@
       .from('boxes')
       .select('*')
       .eq('shipment_id', shipmentId)
-      .order('created_date', { ascending: true });
+      .order('created_at', { ascending: true });
 
     if (error) {
-      showStatus('Failed to load boxes: ' + error.message, true);
+      // Compatibility with an older schema using created_date.
+      const fallback = await supabaseClient
+        .from('boxes')
+        .select('*')
+        .eq('shipment_id', shipmentId)
+        .order('created_date', { ascending: true });
+
+      if (fallback.error) {
+        showStatus('Failed to load boxes: ' + error.message, true);
+        return;
+      }
+      renderBoxes(fallback.data || []);
       return;
     }
 
+    renderBoxes(data || []);
+  }
+
+  async function renderBoxes(data) {
     const listEl = document.getElementById('boxList');
     const emptyEl = document.getElementById('emptyBoxes');
     listEl.innerHTML = '';
 
-    if (!data || data.length === 0) {
+    const boxIds = data.map(box => box.id);
+    let items = [];
+
+    if (boxIds.length) {
+      const { data: itemData, error: itemError } = await supabaseClient
+        .from('items')
+        .select('box_id, quantity')
+        .in('box_id', boxIds);
+
+      if (itemError) {
+        showStatus('Failed to load box items: ' + itemError.message, true);
+        return;
+      }
+      items = itemData || [];
+    }
+
+    let totalVolumeLitres = 0;
+    let totalWeightKg = 0;
+
+    data.forEach(box => {
+      const h = Number(box.height);
+      const w = Number(box.width);
+      const l = Number(box.length);
+
+      if (Number.isFinite(h) && Number.isFinite(w) && Number.isFinite(l)) {
+        let volumeCm3 = h * w * l;
+        if (box.is_imperial) volumeCm3 *= 2.54 ** 3;
+        totalVolumeLitres += volumeCm3 / 1000;
+      }
+
+      const weight = Number(box.weight);
+      if (Number.isFinite(weight)) {
+        totalWeightKg += box.is_imperial ? weight * 0.45359237 : weight;
+      }
+    });
+
+    const totalItems = items.reduce((sum, item) => {
+      const quantity = Number(item.quantity);
+      return sum + (Number.isFinite(quantity) ? quantity : 1);
+    }, 0);
+
+    document.getElementById('shipmentSummary').innerHTML = `
+      Total volume: ${totalVolumeLitres.toFixed(1)} L<br>
+      Total weight: ${totalWeightKg.toFixed(2)} kg<br>
+      Total number of items: ${totalItems}
+    `;
+
+    if (!data.length) {
       emptyEl.style.display = 'block';
       return;
     }
     emptyEl.style.display = 'none';
 
-    data.forEach(box => {
+    data.forEach((box, index) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'box-card-wrap';
+
       const a = document.createElement('a');
       a.className = 'box-card';
       a.href = 'box_detail.html?id=' + box.id;
+
       const unit = box.is_imperial ? 'in' : 'cm';
-      const dims = (box.height && box.width && box.length)
+      const dims = (box.height !== null && box.width !== null && box.length !== null)
         ? `${box.height} × ${box.width} × ${box.length} ${unit}`
         : 'Dimensions not set';
+
+      const weightText = box.weight !== null && box.weight !== undefined && box.weight !== ''
+        ? `${box.weight} ${box.is_imperial ? 'lb' : 'kg'}`
+        : 'Weight not set';
+
       let badges = '';
       if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
       if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
       if (box.is_private) badges += '<span class="badge">Private</span>';
+
+      const boxItems = items.filter(item => item.box_id === box.id);
+      const itemCount = boxItems.reduce((sum, item) => {
+        const quantity = Number(item.quantity);
+        return sum + (Number.isFinite(quantity) ? quantity : 1);
+      }, 0);
+
       a.innerHTML = `
+        <div class="box-number">Box ${index + 1}</div>
         <div class="room">${escapeHtml(box.room || 'Unassigned room')}${badges}</div>
-        <div class="meta">${escapeHtml(dims)}</div>
+        <div class="meta">
+          Dimensions: ${escapeHtml(dims)}<br>
+          Weight: ${escapeHtml(weightText)}<br>
+          Items: ${itemCount}
+        </div>
       `;
-      listEl.appendChild(a);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'delete-box';
+      deleteButton.textContent = 'Delete';
+      deleteButton.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        deleteBox(box.id, data);
+      };
+
+      wrap.appendChild(a);
+      wrap.appendChild(deleteButton);
+      listEl.appendChild(wrap);
     });
+  }
+
+  async function deleteBox(boxIdToDelete, allBoxes) {
+    const alternateBoxes = allBoxes.filter(box => box.id !== boxIdToDelete);
+    let transferBoxId = null;
+
+    if (alternateBoxes.length) {
+      const choices = alternateBoxes.map((box, index) =>
+        `${index + 1}: ${box.room || 'Unassigned room'}`
+      ).join('\n');
+
+      const answer = prompt(
+        'Enter the number of the box to transfer all items to, or leave blank to delete the items.\n\n' +
+        choices
+      );
+
+      if (answer === null) return;
+
+      if (answer.trim() !== '') {
+        const choice = parseInt(answer.trim(), 10);
+        if (!Number.isInteger(choice) || choice < 1 || choice > alternateBoxes.length) {
+          showStatus('Invalid destination box.', true);
+          return;
+        }
+        transferBoxId = alternateBoxes[choice - 1].id;
+      }
+    }
+
+    if (!transferBoxId) {
+      if (!confirm('All associated items will be deleted. Are you sure?')) return;
+
+      const { error: itemError } = await supabaseClient
+        .from('items')
+        .delete()
+        .eq('box_id', boxIdToDelete);
+
+      if (itemError) {
+        showStatus('Failed to delete box items: ' + itemError.message, true);
+        return;
+      }
+    } else {
+      const { error: transferError } = await supabaseClient
+        .from('items')
+        .update({ box_id: transferBoxId })
+        .eq('box_id', boxIdToDelete);
+
+      if (transferError) {
+        showStatus('Failed to transfer items: ' + transferError.message, true);
+        return;
+      }
+    }
+
+    const { error: boxError } = await supabaseClient
+      .from('boxes')
+      .delete()
+      .eq('id', boxIdToDelete);
+
+    if (boxError) {
+      showStatus('Failed to delete box: ' + boxError.message, true);
+      return;
+    }
+
+    showStatus(transferBoxId ? 'Box deleted and items transferred.' : 'Box deleted.', false);
+    loadBoxes();
   }
 
   async function addBox() {
