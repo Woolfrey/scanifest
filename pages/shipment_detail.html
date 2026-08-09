@@ -237,11 +237,11 @@
 
     let itemCount = 0;
     if (boxIds.length > 0) {
-      const { count } = await supabaseClient
+      const { data: itemQuantities } = await supabaseClient
         .from('items')
-        .select('id', { count: 'exact', head: true })
+        .select('quantity')
         .in('box_id', boxIds);
-      itemCount = count || 0;
+      itemCount = (itemQuantities || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
     }
 
     const totalVolume = boxList.reduce((sum, b) => sum + boxVolumeLiters(b), 0);
