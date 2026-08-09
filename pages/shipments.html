@@ -164,11 +164,22 @@
     }
     emptyEl.style.display = 'none';
 
+    const shipmentIds = shipments.map(s => s.id);
+    const { data: destinations } = await supabaseClient
+      .from('destination')
+      .select('shipment_id, suburb, state, country')
+      .in('shipment_id', shipmentIds);
+
+    const destByShipment = {};
+    (destinations || []).forEach(d => { destByShipment[d.shipment_id] = d; });
+
     shipments.forEach(shipment => {
       const boxes = shipment.number_of_boxes ?? 0;
       const items = shipment.number_of_items ?? 0;
       const volume = shipment.total_volume ?? 0;
       const weight = shipment.total_weight ?? 0;
+      const dest = destByShipment[shipment.id];
+      const destParts = dest ? [dest.suburb, dest.state, dest.country].filter(Boolean) : [];
 
       const row = document.createElement('div');
       row.className = 'shipment-row';
@@ -179,6 +190,7 @@
       a.innerHTML = `
         <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
         <div class="meta">${boxes} box${boxes === 1 ? '' : 'es'} ⬝ ${items} item${items === 1 ? '' : 's'} ⬝ ${Number(volume).toFixed(1)} L ⬝ ${Number(weight).toFixed(1)} kg</div>
+        <div class="meta">${destParts.length ? escapeHtml(destParts.join(', ')) : 'No destination set'}</div>
       `;
 
       const deleteBtn = document.createElement('button');
