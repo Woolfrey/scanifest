@@ -17,7 +17,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   a.back, a.edit-link {
     font-size: 13px;
@@ -29,6 +29,19 @@
     border-radius: 6px;
     padding: 6px 10px;
     color: #1a1a1a;
+  }
+  #shipmentContext {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+  }
+  #shipmentContext .ship-name { font-weight: 600; color: #666; }
+  #destinationContext {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #eee;
   }
   h1 { font-size: 24px; margin: 4px 0; }
   .badge {
@@ -69,6 +82,9 @@
 </header>
 
 <div id="content" style="display:none;">
+  <div id="shipmentContext" style="display:none;"></div>
+  <div id="destinationContext" style="display:none;"></div>
+
   <h1 id="roomName"></h1>
   <div class="dims" id="dims"></div>
 
@@ -131,27 +147,56 @@
     }
     document.getElementById('dims').textContent = dimsText || 'No dimensions recorded';
 
-    // Check if the current user owns the parent shipment (RLS-enforced) - if so, show Edit link
+    // Shipment + destination info is owner-only (RLS), so this section
+    // simply stays hidden for anonymous or non-owner scanners.
     let isOwner = false;
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
-      const { data: ownedShipment } = await supabaseClient
+      const { data: shipment } = await supabaseClient
         .from('shipments')
-        .select('id')
+        .select('id, name')
         .eq('id', box.shipment_id)
         .maybeSingle();
-      if (ownedShipment) {
+
+      if (shipment) {
         isOwner = true;
+
         const editLink = document.getElementById('editLink');
         editLink.href = 'box_detail.html?id=' + boxId;
         editLink.style.display = 'inline-block';
         document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
+
+        const shipCtx = document.getElementById('shipmentContext');
+        shipCtx.innerHTML = `Shipment: <span class="ship-name">${escapeHtml(shipment.name || 'Untitled shipment')}</span>`;
+        shipCtx.style.display = 'block';
+
+        const { data: destination } = await supabaseClient
+          .from('destination')
+          .select('*')
+          .eq('shipment_id', box.shipment_id)
+          .maybeSingle();
+
+        if (destination) {
+          const destParts = [
+            destination.address_line_1,
+            destination.address_line_2,
+            destination.suburb,
+            destination.state,
+            destination.postcode,
+            destination.country
+          ].filter(Boolean);
+          if (destParts.length > 0) {
+            const destCtx = document.getElementById('destinationContext');
+            destCtx.textContent = 'Destination: ' + destParts.join(', ');
+            destCtx.style.display = 'block';
+          }
+        }
       }
     }
 
-    // Private boxes: hide the item list from anyone who isn't the owner,
-    // but the box's own metadata above (room, dims, flags) still shows.
-    if (box.is_private && !isOwner) {
+    // Private boxes never show their contents on this page, even to the
+    // owner - the owner manages items via the Edit Box page instead.
+    if (box.is_private) {
       document.getElementById('privateNotice').style.display = 'block';
       return;
     }

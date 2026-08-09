@@ -29,16 +29,7 @@
     font-size: 13px;
     cursor: pointer;
   }
-  .shipment-card {
-    display: block;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 14px;
-    margin-bottom: 10px;
-    text-decoration: none;
-    color: #1a1a1a;
-  }
-  .shipment-card-wrap {
+  .shipment-row {
     display: flex;
     align-items: stretch;
     gap: 8px;
@@ -52,21 +43,21 @@
     padding: 14px;
     text-decoration: none;
     color: #1a1a1a;
+    min-width: 0;
   }
   .shipment-card:hover { border-color: #999; }
   .shipment-card .name { font-weight: 600; font-size: 16px; }
-  .shipment-card .meta { color: #666; font-size: 13px; margin-top: 4px; line-height: 1.5; }
-  button.delete-shipment {
-    align-self: stretch;
+  .shipment-card .meta { color: #666; font-size: 13px; margin-top: 4px; }
+  button.delete-btn {
     background: none;
     border: 1px solid #ddd;
     border-radius: 8px;
     color: #c0392b;
-    font-size: 12px;
-    padding: 8px 10px;
+    font-size: 13px;
+    padding: 0 14px;
     cursor: pointer;
+    white-space: nowrap;
   }
-  button.delete-shipment:hover { border-color: #c0392b; }
   #emptyState { color: #666; font-size: 14px; margin-bottom: 20px; }
   h2 { font-size: 16px; margin-top: 32px; }
   input {
@@ -132,6 +123,12 @@
     statusEl.className = isError ? 'error' : 'success';
   }
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   async function requireAuth() {
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (!session) {
@@ -147,10 +144,10 @@
   }
 
   async function loadShipments() {
-    const { data, error } = await supabaseClient
+    const { data: shipments, error } = await supabaseClient
       .from('shipments')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_date', { ascending: false });
 
     if (error) {
       showStatus('Failed to load shipments: ' + error.message, true);
@@ -161,165 +158,49 @@
     const emptyEl = document.getElementById('emptyState');
     listEl.innerHTML = '';
 
-    if (!data || data.length === 0) {
+    if (!shipments || shipments.length === 0) {
       emptyEl.style.display = 'block';
       return;
     }
     emptyEl.style.display = 'none';
 
-    for (const shipment of data) {
-      const { data: boxes, error: boxesError } = await supabaseClient
-        .from('boxes')
-        .select('id, height, width, length, weight, is_imperial')
-        .eq('shipment_id', shipment.id);
+    shipments.forEach(shipment => {
+      const boxes = shipment.number_of_boxes ?? 0;
+      const items = shipment.number_of_items ?? 0;
+      const volume = shipment.total_volume ?? 0;
+      const weight = shipment.total_weight ?? 0;
 
-      if (boxesError) {
-        showStatus('Failed to load shipment totals: ' + boxesError.message, true);
-        return;
-      }
-
-      const boxIds = (boxes || []).map(box => box.id);
-      let items = [];
-
-      if (boxIds.length) {
-        const { data: itemData, error: itemsError } = await supabaseClient
-          .from('items')
-          .select('box_id, quantity')
-          .in('box_id', boxIds);
-
-        if (itemsError) {
-          showStatus('Failed to load shipment items: ' + itemsError.message, true);
-          return;
-        }
-        items = itemData || [];
-      }
-
-      let volumeLitres = 0;
-      let totalWeightKg = 0;
-
-      (boxes || []).forEach(box => {
-        const h = Number(box.height);
-        const w = Number(box.width);
-        const l = Number(box.length);
-
-        if (Number.isFinite(h) && Number.isFinite(w) && Number.isFinite(l)) {
-          let volumeCm3 = h * w * l;
-          if (box.is_imperial) volumeCm3 *= 2.54 ** 3;
-          volumeLitres += volumeCm3 / 1000;
-        }
-
-        const weight = Number(box.weight);
-        if (Number.isFinite(weight)) {
-          totalWeightKg += box.is_imperial ? weight * 0.45359237 : weight;
-        }
-      });
-
-      const totalItems = items.reduce((sum, item) => {
-        const quantity = Number(item.quantity);
-        return sum + (Number.isFinite(quantity) ? quantity : 1);
-      }, 0);
-
-      const { data: destination } = await supabaseClient
-        .from('destination')
-        .select('suburb, state, country')
-        .eq('shipment_id', shipment.id)
-        .maybeSingle();
-
-      const destinationText = destination
-        ? [destination.suburb, destination.state, destination.country]
-            .filter(Boolean)
-            .join(', ')
-        : 'Destination not set';
-
-      const wrap = document.createElement('div');
-      wrap.className = 'shipment-card-wrap';
+      const row = document.createElement('div');
+      row.className = 'shipment-row';
 
       const a = document.createElement('a');
       a.className = 'shipment-card';
       a.href = 'shipment_detail.html?id=' + shipment.id;
       a.innerHTML = `
         <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
-        <div class="meta">
-          Total volume: ${volumeLitres.toFixed(1)} L<br>
-          Total weight: ${totalWeightKg.toFixed(2)} kg<br>
-          Total number of items: ${totalItems}<br>
-          Destination: ${escapeHtml(destinationText)}
-        </div>
+        <div class="meta">${boxes} box${boxes === 1 ? '' : 'es'} ⬝ ${items} item${items === 1 ? '' : 's'} ⬝ ${Number(volume).toFixed(1)} L ⬝ ${Number(weight).toFixed(1)} kg</div>
       `;
 
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'delete-shipment';
-      deleteButton.textContent = 'Delete';
-      deleteButton.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        deleteShipment(shipment.id);
-      };
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteShipment(shipment.id);
 
-      wrap.appendChild(a);
-      wrap.appendChild(deleteButton);
-      listEl.appendChild(wrap);
-    }
+      row.appendChild(a);
+      row.appendChild(deleteBtn);
+      listEl.appendChild(row);
+    });
   }
 
-  async function deleteShipment(shipmentIdToDelete) {
+  async function deleteShipment(shipmentId) {
     if (!confirm('Are you sure? You will lose all boxes and items.')) return;
     if (!confirm('Are you really, really sure?')) return;
 
-    const { data: boxes, error: boxesError } = await supabaseClient
-      .from('boxes')
-      .select('id')
-      .eq('shipment_id', shipmentIdToDelete);
-
-    if (boxesError) {
-      showStatus('Failed to find shipment boxes: ' + boxesError.message, true);
+    const { error } = await supabaseClient.from('shipments').delete().eq('id', shipmentId);
+    if (error) {
+      showStatus('Failed to delete shipment: ' + error.message, true);
       return;
     }
-
-    const boxIds = (boxes || []).map(box => box.id);
-
-    if (boxIds.length) {
-      const { error: itemsError } = await supabaseClient
-        .from('items')
-        .delete()
-        .in('box_id', boxIds);
-
-      if (itemsError) {
-        showStatus('Failed to delete shipment items: ' + itemsError.message, true);
-        return;
-      }
-
-      const { error: boxesDeleteError } = await supabaseClient
-        .from('boxes')
-        .delete()
-        .in('id', boxIds);
-
-      if (boxesDeleteError) {
-        showStatus('Failed to delete shipment boxes: ' + boxesDeleteError.message, true);
-        return;
-      }
-    }
-
-    const { error: destinationError } = await supabaseClient
-      .from('destination')
-      .delete()
-      .eq('shipment_id', shipmentIdToDelete);
-
-    if (destinationError) {
-      showStatus('Failed to delete shipment destination: ' + destinationError.message, true);
-      return;
-    }
-
-    const { error: shipmentError } = await supabaseClient
-      .from('shipments')
-      .delete()
-      .eq('id', shipmentIdToDelete);
-
-    if (shipmentError) {
-      showStatus('Failed to delete shipment: ' + shipmentError.message, true);
-      return;
-    }
-
     showStatus('Shipment deleted.', false);
     loadShipments();
   }
@@ -336,7 +217,11 @@
       .from('shipments')
       .insert({
         user_id: currentUser.id,
-        name: name
+        name: name,
+        number_of_boxes: 0,
+        number_of_items: 0,
+        total_volume: 0,
+        total_weight: 0
       })
       .select();
 
@@ -353,12 +238,6 @@
     } else {
       loadShipments();
     }
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   async function init() {

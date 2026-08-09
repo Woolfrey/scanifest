@@ -24,25 +24,6 @@
     color: #666;
     text-decoration: none;
   }
-  h1 {
-    font-size: 22px;
-    margin: 4px 0 0 0;
-    border: none;
-    padding: 4px 0;
-    width: 100%;
-  }
-  .shipment-summary {
-    color: #666;
-    font-size: 13px;
-    line-height: 1.5;
-    margin: 2px 0 8px;
-  }
-  .box-card-wrap {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
   input.name-input {
     font-size: 22px;
     font-weight: 700;
@@ -55,6 +36,11 @@
   input.name-input:focus {
     outline: none;
     border-bottom: 2px solid #1a1a1a;
+  }
+  #shipmentSummary {
+    color: #666;
+    font-size: 13px;
+    margin: 2px 0 20px 0;
   }
   h2 { font-size: 15px; margin-top: 28px; margin-bottom: 10px; color: #444; }
   .field-grid {
@@ -73,6 +59,21 @@
     box-sizing: border-box;
   }
   input:focus { outline: none; border-color: #1a1a1a; }
+  select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 13px;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+  }
+  .box-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   .box-card {
     flex: 1;
     display: block;
@@ -81,22 +82,11 @@
     padding: 12px;
     text-decoration: none;
     color: #1a1a1a;
+    min-width: 0;
   }
   .box-card:hover { border-color: #999; }
-  .box-card .box-number { font-weight: 700; font-size: 15px; }
-  .box-card .room { font-weight: 600; font-size: 14px; margin-top: 3px; }
-  .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; line-height: 1.5; }
-  button.delete-box {
-    align-self: stretch;
-    background: none;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    color: #c0392b;
-    font-size: 12px;
-    padding: 8px 10px;
-    cursor: pointer;
-  }
-  button.delete-box:hover { border-color: #c0392b; }
+  .box-card .number { font-weight: 600; font-size: 15px; }
+  .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; }
   .badge {
     display: inline-block;
     font-size: 11px;
@@ -106,6 +96,35 @@
     background: #f0f0f0;
     color: #555;
   }
+  button.delete-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    color: #c0392b;
+    font-size: 13px;
+    padding: 0 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .delete-panel {
+    border: 1px solid #f0c0c0;
+    background: #fdf5f5;
+    border-radius: 8px;
+    padding: 12px;
+    margin: -4px 0 8px 0;
+    font-size: 13px;
+  }
+  .delete-panel .warn { color: #c0392b; margin-bottom: 8px; }
+  .delete-panel-buttons { display: flex; gap: 8px; }
+  .delete-panel-buttons button {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn-move { background: #1a1a1a; color: white; border: none; }
+  .btn-delete-all { background: white; color: #c0392b; border: 1px solid #c0392b; }
   #emptyBoxes { color: #666; font-size: 14px; margin-bottom: 12px; }
   button.primary {
     width: 100%;
@@ -136,7 +155,7 @@
 </header>
 
 <input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
-<div id="shipmentSummary" class="shipment-summary"></div>
+<div id="shipmentSummary"></div>
 
 <h2>Destination</h2>
 <input type="text" id="contactName" placeholder="Contact name">
@@ -171,6 +190,7 @@
   const params = new URLSearchParams(window.location.search);
   const shipmentId = params.get('id');
   let currentUser = null;
+  let openDeletePanelBoxId = null;
 
   function showStatus(message, isError) {
     statusEl.textContent = message;
@@ -182,6 +202,57 @@
     saveIndicator.className = 'success';
     clearTimeout(flashSaved._t);
     flashSaved._t = setTimeout(() => { saveIndicator.style.display = 'none'; }, 1500);
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function boxVolumeLiters(box) {
+    if (!box.height || !box.width || !box.length) return 0;
+    let h = box.height, w = box.width, l = box.length;
+    if (box.is_imperial) { h *= 2.54; w *= 2.54; l *= 2.54; }
+    return (h * w * l) / 1000;
+  }
+  function boxWeightKg(box) {
+    if (!box.weight) return 0;
+    return box.is_imperial ? box.weight * 0.453592 : box.weight;
+  }
+
+  // Recomputes and saves the cached aggregate fields on shipments.
+  // Called after any action that changes box count, item count, or box dims.
+  async function recomputeShipmentTotals() {
+    const { data: boxes } = await supabaseClient
+      .from('boxes')
+      .select('id, height, width, length, weight, is_imperial')
+      .eq('shipment_id', shipmentId);
+
+    const boxList = boxes || [];
+    const boxIds = boxList.map(b => b.id);
+
+    let itemCount = 0;
+    if (boxIds.length > 0) {
+      const { count } = await supabaseClient
+        .from('items')
+        .select('id', { count: 'exact', head: true })
+        .in('box_id', boxIds);
+      itemCount = count || 0;
+    }
+
+    const totalVolume = boxList.reduce((sum, b) => sum + boxVolumeLiters(b), 0);
+    const totalWeight = boxList.reduce((sum, b) => sum + boxWeightKg(b), 0);
+
+    await supabaseClient
+      .from('shipments')
+      .update({
+        number_of_boxes: boxList.length,
+        number_of_items: itemCount,
+        total_volume: totalVolume,
+        total_weight: totalWeight
+      })
+      .eq('id', shipmentId);
   }
 
   async function requireAuth() {
@@ -205,6 +276,13 @@
       return;
     }
     document.getElementById('shipmentName').value = data.name || '';
+
+    const boxes = data.number_of_boxes ?? 0;
+    const items = data.number_of_items ?? 0;
+    const volume = data.total_volume ?? 0;
+    const weight = data.total_weight ?? 0;
+    document.getElementById('shipmentSummary').textContent =
+      `${boxes} box${boxes === 1 ? '' : 'es'} ⬝ ${items} item${items === 1 ? '' : 's'} ⬝ ${Number(volume).toFixed(1)} L ⬝ ${Number(weight).toFixed(1)} kg`;
   }
 
   async function saveAll() {
@@ -271,205 +349,183 @@
     }
   }
 
+  let currentBoxes = [];
+  let itemCountByBox = {};
+
   async function loadBoxes() {
-    const { data, error } = await supabaseClient
+    const { data: boxes, error } = await supabaseClient
       .from('boxes')
       .select('*')
       .eq('shipment_id', shipmentId)
-      .order('created_at', { ascending: true });
+      .order('created_date', { ascending: true });
 
     if (error) {
-      // Compatibility with an older schema using created_date.
-      const fallback = await supabaseClient
-        .from('boxes')
-        .select('*')
-        .eq('shipment_id', shipmentId)
-        .order('created_date', { ascending: true });
-
-      if (fallback.error) {
-        showStatus('Failed to load boxes: ' + error.message, true);
-        return;
-      }
-      renderBoxes(fallback.data || []);
+      showStatus('Failed to load boxes: ' + error.message, true);
       return;
     }
 
-    renderBoxes(data || []);
+    currentBoxes = boxes || [];
+    const boxIds = currentBoxes.map(b => b.id);
+
+    itemCountByBox = {};
+    if (boxIds.length > 0) {
+      const { data: items } = await supabaseClient
+        .from('items')
+        .select('id, box_id')
+        .in('box_id', boxIds);
+      (items || []).forEach(item => {
+        itemCountByBox[item.box_id] = (itemCountByBox[item.box_id] || 0) + 1;
+      });
+    }
+
+    renderBoxes();
   }
 
-  async function renderBoxes(data) {
+  function renderBoxes() {
     const listEl = document.getElementById('boxList');
     const emptyEl = document.getElementById('emptyBoxes');
     listEl.innerHTML = '';
 
-    const boxIds = data.map(box => box.id);
-    let items = [];
-
-    if (boxIds.length) {
-      const { data: itemData, error: itemError } = await supabaseClient
-        .from('items')
-        .select('box_id, quantity')
-        .in('box_id', boxIds);
-
-      if (itemError) {
-        showStatus('Failed to load box items: ' + itemError.message, true);
-        return;
-      }
-      items = itemData || [];
-    }
-
-    let totalVolumeLitres = 0;
-    let totalWeightKg = 0;
-
-    data.forEach(box => {
-      const h = Number(box.height);
-      const w = Number(box.width);
-      const l = Number(box.length);
-
-      if (Number.isFinite(h) && Number.isFinite(w) && Number.isFinite(l)) {
-        let volumeCm3 = h * w * l;
-        if (box.is_imperial) volumeCm3 *= 2.54 ** 3;
-        totalVolumeLitres += volumeCm3 / 1000;
-      }
-
-      const weight = Number(box.weight);
-      if (Number.isFinite(weight)) {
-        totalWeightKg += box.is_imperial ? weight * 0.45359237 : weight;
-      }
-    });
-
-    const totalItems = items.reduce((sum, item) => {
-      const quantity = Number(item.quantity);
-      return sum + (Number.isFinite(quantity) ? quantity : 1);
-    }, 0);
-
-    document.getElementById('shipmentSummary').innerHTML = `
-      Total volume: ${totalVolumeLitres.toFixed(1)} L<br>
-      Total weight: ${totalWeightKg.toFixed(2)} kg<br>
-      Total number of items: ${totalItems}
-    `;
-
-    if (!data.length) {
+    if (currentBoxes.length === 0) {
       emptyEl.style.display = 'block';
       return;
     }
     emptyEl.style.display = 'none';
 
-    data.forEach((box, index) => {
-      const wrap = document.createElement('div');
-      wrap.className = 'box-card-wrap';
-
-      const a = document.createElement('a');
-      a.className = 'box-card';
-      a.href = 'box_detail.html?id=' + box.id;
-
+    currentBoxes.forEach((box, index) => {
+      const boxNumber = index + 1;
       const unit = box.is_imperial ? 'in' : 'cm';
-      const dims = (box.height !== null && box.width !== null && box.length !== null)
+      const weightUnit = box.is_imperial ? 'lb' : 'kg';
+      const dims = (box.height && box.width && box.length)
         ? `${box.height} × ${box.width} × ${box.length} ${unit}`
         : 'Dimensions not set';
-
-      const weightText = box.weight !== null && box.weight !== undefined && box.weight !== ''
-        ? `${box.weight} ${box.is_imperial ? 'lb' : 'kg'}`
-        : 'Weight not set';
+      const weightText = box.weight ? ` · ${box.weight} ${weightUnit}` : '';
 
       let badges = '';
       if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
       if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
       if (box.is_private) badges += '<span class="badge">Private</span>';
 
-      const boxItems = items.filter(item => item.box_id === box.id);
-      const itemCount = boxItems.reduce((sum, item) => {
-        const quantity = Number(item.quantity);
-        return sum + (Number.isFinite(quantity) ? quantity : 1);
-      }, 0);
+      const row = document.createElement('div');
 
+      const boxRow = document.createElement('div');
+      boxRow.className = 'box-row';
+
+      const a = document.createElement('a');
+      a.className = 'box-card';
+      a.href = 'box_detail.html?id=' + box.id;
       a.innerHTML = `
-        <div class="box-number">Box ${index + 1}</div>
-        <div class="room">${escapeHtml(box.room || 'Unassigned room')}${badges}</div>
-        <div class="meta">
-          Dimensions: ${escapeHtml(dims)}<br>
-          Weight: ${escapeHtml(weightText)}<br>
-          Items: ${itemCount}
-        </div>
+        <div class="number">Box ${boxNumber}${badges}</div>
+        <div class="meta">${escapeHtml(box.room || 'Unassigned room')} · ${escapeHtml(dims)}${weightText}</div>
       `;
 
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'delete-box';
-      deleteButton.textContent = 'Delete';
-      deleteButton.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        deleteBox(box.id, data);
-      };
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => toggleDeletePanel(box.id);
 
-      wrap.appendChild(a);
-      wrap.appendChild(deleteButton);
-      listEl.appendChild(wrap);
+      boxRow.appendChild(a);
+      boxRow.appendChild(deleteBtn);
+      row.appendChild(boxRow);
+
+      if (openDeletePanelBoxId === box.id) {
+        row.appendChild(buildDeletePanel(box, boxNumber));
+      }
+
+      listEl.appendChild(row);
     });
   }
 
-  async function deleteBox(boxIdToDelete, allBoxes) {
-    const alternateBoxes = allBoxes.filter(box => box.id !== boxIdToDelete);
-    let transferBoxId = null;
-
-    if (alternateBoxes.length) {
-      const choices = alternateBoxes.map((box, index) =>
-        `${index + 1}: ${box.room || 'Unassigned room'}`
-      ).join('\n');
-
-      const answer = prompt(
-        'Enter the number of the box to transfer all items to, or leave blank to delete the items.\n\n' +
-        choices
-      );
-
-      if (answer === null) return;
-
-      if (answer.trim() !== '') {
-        const choice = parseInt(answer.trim(), 10);
-        if (!Number.isInteger(choice) || choice < 1 || choice > alternateBoxes.length) {
-          showStatus('Invalid destination box.', true);
-          return;
-        }
-        transferBoxId = alternateBoxes[choice - 1].id;
+  function toggleDeletePanel(boxId) {
+    const itemCount = itemCountByBox[boxId] || 0;
+    if (itemCount === 0) {
+      if (confirm('Delete this box?')) {
+        deleteBoxCompletely(boxId);
       }
+      return;
+    }
+    openDeletePanelBoxId = (openDeletePanelBoxId === boxId) ? null : boxId;
+    renderBoxes();
+  }
+
+  function buildDeletePanel(box, boxNumber) {
+    const itemCount = itemCountByBox[box.id] || 0;
+    const otherBoxes = currentBoxes.filter(b => b.id !== box.id);
+
+    const panel = document.createElement('div');
+    panel.className = 'delete-panel';
+
+    const warn = document.createElement('div');
+    warn.className = 'warn';
+    warn.textContent = `Box ${boxNumber} has ${itemCount} item${itemCount === 1 ? '' : 's'}.`;
+    panel.appendChild(warn);
+
+    if (otherBoxes.length > 0) {
+      const select = document.createElement('select');
+      select.id = 'moveTarget_' + box.id;
+      otherBoxes.forEach(b => {
+        const idx = currentBoxes.indexOf(b) + 1;
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = `Box ${idx} — ${b.room || 'Unassigned room'}`;
+        select.appendChild(opt);
+      });
+      panel.appendChild(select);
     }
 
-    if (!transferBoxId) {
-      if (!confirm('All associated items will be deleted. Are you sure?')) return;
+    const btnRow = document.createElement('div');
+    btnRow.className = 'delete-panel-buttons';
 
-      const { error: itemError } = await supabaseClient
-        .from('items')
-        .delete()
-        .eq('box_id', boxIdToDelete);
-
-      if (itemError) {
-        showStatus('Failed to delete box items: ' + itemError.message, true);
-        return;
-      }
-    } else {
-      const { error: transferError } = await supabaseClient
-        .from('items')
-        .update({ box_id: transferBoxId })
-        .eq('box_id', boxIdToDelete);
-
-      if (transferError) {
-        showStatus('Failed to transfer items: ' + transferError.message, true);
-        return;
-      }
+    if (otherBoxes.length > 0) {
+      const moveBtn = document.createElement('button');
+      moveBtn.className = 'btn-move';
+      moveBtn.textContent = 'Move items & delete box';
+      moveBtn.onclick = () => moveItemsAndDeleteBox(box.id);
+      btnRow.appendChild(moveBtn);
     }
 
-    const { error: boxError } = await supabaseClient
-      .from('boxes')
-      .delete()
-      .eq('id', boxIdToDelete);
+    const deleteAllBtn = document.createElement('button');
+    deleteAllBtn.className = 'btn-delete-all';
+    deleteAllBtn.textContent = 'Delete box & items';
+    deleteAllBtn.onclick = () => {
+      if (confirm('All associated items will be deleted. Are you sure?')) {
+        deleteBoxCompletely(box.id);
+      }
+    };
+    btnRow.appendChild(deleteAllBtn);
 
-    if (boxError) {
-      showStatus('Failed to delete box: ' + boxError.message, true);
+    panel.appendChild(btnRow);
+    return panel;
+  }
+
+  async function moveItemsAndDeleteBox(boxId) {
+    const select = document.getElementById('moveTarget_' + boxId);
+    const targetBoxId = select.value;
+
+    const { error: moveError } = await supabaseClient
+      .from('items')
+      .update({ box_id: targetBoxId })
+      .eq('box_id', boxId);
+
+    if (moveError) {
+      showStatus('Failed to move items: ' + moveError.message, true);
       return;
     }
 
-    showStatus(transferBoxId ? 'Box deleted and items transferred.' : 'Box deleted.', false);
-    loadBoxes();
+    await deleteBoxCompletely(boxId);
+  }
+
+  async function deleteBoxCompletely(boxId) {
+    const { error } = await supabaseClient.from('boxes').delete().eq('id', boxId);
+    if (error) {
+      showStatus('Failed to delete box: ' + error.message, true);
+      return;
+    }
+    openDeletePanelBoxId = null;
+    showStatus('Box deleted.', false);
+    await recomputeShipmentTotals();
+    await loadShipment();
+    await loadBoxes();
   }
 
   async function addBox() {
@@ -488,17 +544,13 @@
       return;
     }
 
+    await recomputeShipmentTotals();
+
     if (data && data[0]) {
       window.location.href = 'box_detail.html?id=' + data[0].id;
     } else {
       loadBoxes();
     }
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 
   async function init() {
