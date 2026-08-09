@@ -65,7 +65,7 @@
     gap: 8px;
   }
   .item-row .info { min-width: 0; flex: 1; }
-  .item-row .desc { font-weight: 600; font-size: 14px; }
+  .item-row .desc { font-size: 14px; font-weight: 400; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
   .item-row .actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   select.move-select {
@@ -346,10 +346,8 @@
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const metaParts = [];
-      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
-      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
-      if (item.material) metaParts.push(item.material);
+      const qty = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : '';
+      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
 
       let moveOptions = '<option value="">Move to...</option>';
       otherBoxesForMove.forEach(b => {
@@ -358,8 +356,8 @@
 
       div.innerHTML = `
         <div class="info">
-          <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
-          <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
+          <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+          <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
         </div>
         <div class="actions">
           ${otherBoxesForMove.length > 0 ? `<select class="move-select" onchange="moveItem('${item.id}', this.value)">${moveOptions}</select>` : ''}
