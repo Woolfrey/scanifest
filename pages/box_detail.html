@@ -127,7 +127,7 @@
 
   <label class="checkbox-row">
     <input type="checkbox" id="isImperial">
-    Imperial units (unchecked = metric)
+    Use imperial units (unchecked = metric)
   </label>
   <label class="checkbox-row">
     <input type="checkbox" id="isHeavy">
@@ -139,7 +139,7 @@
   </label>
   <label class="checkbox-row">
     <input type="checkbox" id="isPrivate">
-    Contents are private
+    Make private (hides contents from anyone who scans the QR code)
   </label>
 
   <button class="primary" onclick="saveAll()">Save</button>
@@ -218,11 +218,11 @@
 
     let itemCount = 0;
     if (boxIds.length > 0) {
-      const { count } = await supabaseClient
+      const { data: itemQuantities } = await supabaseClient
         .from('items')
-        .select('id', { count: 'exact', head: true })
+        .select('quantity')
         .in('box_id', boxIds);
-      itemCount = count || 0;
+      itemCount = (itemQuantities || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
     }
 
     const totalVolume = boxList.reduce((sum, b) => sum + boxVolumeLiters(b), 0);
@@ -346,7 +346,7 @@
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const qty = item.quantity ? ` x${item.quantity}` : '';
+      const qty = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : '';
       const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
 
       let moveOptions = '<option value="">Move to...</option>';
