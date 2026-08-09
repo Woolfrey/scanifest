@@ -31,18 +31,20 @@
     color: #1a1a1a;
   }
   #shipmentContext {
-    font-size: 12px;
-    color: #888;
-    margin-bottom: 4px;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
   }
-  #shipmentContext .ship-name { font-weight: 600; color: #666; }
+  #shipmentContext b { color: #1a1a1a; }
   #destinationContext {
     font-size: 12px;
     color: #888;
     margin-bottom: 16px;
     padding-bottom: 12px;
     border-bottom: 1px solid #eee;
+    line-height: 1.6;
   }
+  #destinationContext .label { color: #666; }
   h1 { font-size: 24px; margin: 4px 0; }
   .badge {
     display: inline-block;
@@ -154,7 +156,7 @@
     if (session) {
       const { data: shipment } = await supabaseClient
         .from('shipments')
-        .select('id, name')
+        .select('id, name, number_of_boxes, number_of_items')
         .eq('id', box.shipment_id)
         .maybeSingle();
 
@@ -166,8 +168,10 @@
         editLink.style.display = 'inline-block';
         document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
 
+        const boxesCount = shipment.number_of_boxes ?? 0;
+        const itemsCount = shipment.number_of_items ?? 0;
         const shipCtx = document.getElementById('shipmentContext');
-        shipCtx.innerHTML = `Shipment: <span class="ship-name">${escapeHtml(shipment.name || 'Untitled shipment')}</span>`;
+        shipCtx.innerHTML = `Shipment: <b>${escapeHtml(shipment.name || 'Untitled shipment')}</b> ⬝ ${boxesCount} box${boxesCount === 1 ? '' : 'es'} ⬝ ${itemsCount} item${itemsCount === 1 ? '' : 's'}`;
         shipCtx.style.display = 'block';
 
         const { data: destination } = await supabaseClient
@@ -177,17 +181,24 @@
           .maybeSingle();
 
         if (destination) {
-          const destParts = [
-            destination.address_line_1,
-            destination.address_line_2,
-            destination.suburb,
-            destination.state,
-            destination.postcode,
-            destination.country
-          ].filter(Boolean);
-          if (destParts.length > 0) {
+          const lines = [];
+          if (destination.name) lines.push(escapeHtml(destination.name));
+
+          const contactLine = [destination.phone, destination.email].filter(Boolean).join(', ');
+          if (contactLine) lines.push(escapeHtml(contactLine));
+
+          if (destination.address_line_1) lines.push(escapeHtml(destination.address_line_1));
+          if (destination.address_line_2) lines.push(escapeHtml(destination.address_line_2));
+
+          const suburbLine = [destination.suburb, destination.postcode].filter(Boolean).join(', ');
+          if (suburbLine) lines.push(escapeHtml(suburbLine));
+
+          const stateLine = [destination.state, destination.country].filter(Boolean).join(', ');
+          if (stateLine) lines.push(escapeHtml(stateLine));
+
+          if (lines.length > 0) {
             const destCtx = document.getElementById('destinationContext');
-            destCtx.textContent = 'Destination: ' + destParts.join(', ');
+            destCtx.innerHTML = '<span class="label">Destination:</span><br>' + lines.join('<br>');
             destCtx.style.display = 'block';
           }
         }
