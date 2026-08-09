@@ -124,7 +124,7 @@
     const { data, error } = await supabaseClient
       .from('shipments')
       .select('*')
-      .order('created_date', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) {
       showStatus('Failed to load shipments: ' + error.message, true);
