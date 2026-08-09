@@ -159,7 +159,10 @@
 
 <h2>Destination</h2>
 <input type="text" id="contactName" placeholder="Contact name">
-<input type="text" id="contactPhone" placeholder="Contact phone">
+<div class="field-grid">
+  <input type="text" id="contactPhone" placeholder="Contact number">
+  <input type="text" id="contactEmail" placeholder="Contact email">
+</div>
 <input type="text" id="addressLine1" placeholder="Address line 1">
 <input type="text" id="addressLine2" placeholder="Address line 2">
 <div class="field-grid">
@@ -306,6 +309,7 @@
       shipment_id: shipmentId,
       name: document.getElementById('contactName').value.trim(),
       phone: document.getElementById('contactPhone').value.trim(),
+      email: document.getElementById('contactEmail').value.trim(),
       address_line_1: document.getElementById('addressLine1').value.trim(),
       address_line_2: document.getElementById('addressLine2').value.trim(),
       suburb: document.getElementById('suburb').value.trim(),
@@ -340,6 +344,7 @@
     if (data) {
       document.getElementById('contactName').value = data.name || '';
       document.getElementById('contactPhone').value = data.phone || '';
+      document.getElementById('contactEmail').value = data.email || '';
       document.getElementById('addressLine1').value = data.address_line_1 || '';
       document.getElementById('addressLine2').value = data.address_line_2 || '';
       document.getElementById('suburb').value = data.suburb || '';
