@@ -129,14 +129,15 @@
       .select('*')
       .eq('id', boxId)
       .maybeSingle();
-
+  
     if (error || !box) {
       showStatus('This box doesn\'t exist.', true);
       return;
     }
-
+    
     document.getElementById('content').style.display = 'block';
-
+    document.getElementById('boxBackLink').href = 'box_detail.html?id=' + boxId;
+    
     let badges = '';
     if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
     if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
