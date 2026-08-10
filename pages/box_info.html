@@ -165,7 +165,7 @@
       const boxesCount = row.number_of_boxes ?? 0;
       const itemsCount = row.number_of_items ?? 0;
       const shipCtx = document.getElementById('shipmentContext');
-      shipCtx.innerHTML = `<b>${escapeHtml(row.shipment_name || 'Untitled shipment')}</b> ⬝ ${boxesCount} box${boxesCount === 1 ? '' : 'es'} ⬝ ${itemsCount} item${itemsCount === 1 ? '' : 's'}`;
+      shipCtx.innerHTML = `<b>${escapeHtml(row.shipment_name || 'Untitled shipment')}</b> ⬝ 1 of ${boxesCount} box${boxesCount === 1 ? '' : 'es'}`;
       shipCtx.style.display = 'block';
 
       const lines = [];
