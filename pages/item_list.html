@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — All Items</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header { margin-bottom: 12px; }
+  a.back {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+    margin-bottom: 4px;
+  }
+  h1 { font-size: 20px; margin: 8px 0 2px 0; }
+  #itemsSummary { color: #666; font-size: 13px; margin-bottom: 16px; }
+  input, select {
+    width: 100%;
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  input:focus, select:focus { outline: none; border-color: #1a1a1a; }
+  .control-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .control-grid select { margin-bottom: 0; }
+  h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
+  .item-row {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+  }
+  .item-row .top-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .item-row .desc { font-size: 14px; }
+  .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
+  .item-row .box-tag {
+    display: inline-block;
+    font-size: 11px;
+    color: #666;
+    text-decoration: none;
+    margin-top: 4px;
+  }
+  .item-row .box-tag:hover { text-decoration: underline; }
+  .item-row .actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+  select.move-select {
+    font-size: 12px;
+    padding: 5px 6px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    max-width: 140px;
+    margin-bottom: 0;
+  }
+  button.delete-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #c0392b;
+    font-size: 12px;
+    padding: 5px 8px;
+    cursor: pointer;
+  }
+  #emptyItems { color: #666; font-size: 14px; margin: 8px 0; }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .field-grid input { margin-bottom: 0; }
+  button.primary {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 15px;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  #status {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.success { background: #e6f4ea; color: #1e7e34; display: block; }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="shipment_detail.html" id="backToShipment">← Back to shipment</a>
+  <a class="back" href="#" id="backToBox" style="display:none;">← Back to box</a>
+  <h1>All items</h1>
+  <div id="itemsSummary"></div>
+</header>
+
+<input type="text" id="searchInput" placeholder="Search by description..." oninput="applyFiltersAndRender()">
+
+<div class="control-grid">
+  <select id="filterBox" onchange="applyFiltersAndRender()"></select>
+  <select id="filterCategory" onchange="applyFiltersAndRender()"></select>
+</div>
+<div class="control-grid">
+  <select id="filterSubcategory" onchange="applyFiltersAndRender()"></select>
+  <select id="sortField" onchange="applyFiltersAndRender()">
+    <option value="description">Sort: Description</option>
+    <option value="quantity">Sort: Quantity</option>
+    <option value="category">Sort: Category</option>
+    <option value="subcategory">Sort: Subcategory</option>
+    <option value="material">Sort: Material</option>
+    <option value="box">Sort: Box</option>
+  </select>
+</div>
+<select id="sortDirection" onchange="applyFiltersAndRender()">
+  <option value="asc">Ascending</option>
+  <option value="desc">Descending</option>
+</select>
+
+<h2>Items</h2>
+<div id="emptyItems" style="display:none;">No items match your filters.</div>
+<div id="itemList"></div>
+
+<h2>Add item</h2>
+<select id="newItemBox"></select>
+<input type="text" id="itemDescription" placeholder="Description">
+<div class="field-grid">
+  <input type="number" id="itemQuantity" placeholder="Qty" value="1">
+  <input type="text" id="itemCategory" placeholder="Category">
+</div>
+<div class="field-grid">
+  <input type="text" id="itemSubcategory" placeholder="Subcategory">
+  <input type="text" id="itemMaterial" placeholder="Material (optional)">
+</div>
+<button class="primary" onclick="addItem()">+ Add item</button>
+
+<div id="status"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const params = new URLSearchParams(window.location.search);
+  const shipmentId = params.get('shipment_id');
+  const boxId = params.get('box_id'); // optional - present when arriving from a specific box
+
+  let boxMap = {}; // box_id -> {number, room}
+  let allItems = [];
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : 'success';
+    statusEl.style.display = message ? 'block' : 'none';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function boxVolumeLiters(box) {
+    if (!box.height || !box.width || !box.length) return 0;
+    let h = box.height, w = box.width, l = box.length;
+    if (box.is_imperial) { h *= 2.54; w *= 2.54; l *= 2.54; }
+    return (h * w * l) / 1000;
+  }
+  function boxWeightKg(box) {
+    if (!box.weight) return 0;
+    return box.is_imperial ? box.weight * 0.453592 : box.weight;
+  }
+
+  async function recomputeShipmentTotals() {
+    const { data: boxes } = await supabaseClient
+      .from('boxes')
+      .select('id, height, width, length, weight, is_imperial')
+      .eq('shipment_id', shipmentId);
+
+    const boxList = boxes || [];
+    const boxIds = boxList.map(b => b.id);
+
+    let itemCount = 0;
+    if (boxIds.length > 0) {
+      const { data: itemQuantities } = await supabaseClient
+        .from('items')
+        .select('quantity')
+        .in('box_id', boxIds);
+      itemCount = (itemQuantities || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
+    }
+
+    const totalVolume = boxList.reduce((sum, b) => sum + boxVolumeLiters(b), 0);
+    const totalWeight = boxList.reduce((sum, b) => sum + boxWeightKg(b), 0);
+
+    await supabaseClient
+      .from('shipments')
+      .update({
+        number_of_boxes: boxList.length,
+        number_of_items: itemCount,
+        total_volume: totalVolume,
+        total_weight: totalWeight
+      })
+      .eq('id', shipmentId);
+  }
+
+  async function requireAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = '../index.html';
+      return null;
+    }
+    return session.user;
+  }
+
+  function populateSelect(selectEl, options, allLabel) {
+    selectEl.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = allLabel;
+    selectEl.appendChild(allOpt);
+    options.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      selectEl.appendChild(o);
+    });
+  }
+
+  async function loadData() {
+    const { data: boxes } = await supabaseClient
+      .from('boxes')
+      .select('id, room')
+      .eq('shipment_id', shipmentId)
+      .order('created_date', { ascending: true });
+
+    const boxList = boxes || [];
+    boxMap = {};
+    boxList.forEach((b, idx) => {
+      boxMap[b.id] = { number: idx + 1, room: b.room };
+    });
+
+    const boxIds = boxList.map(b => b.id);
+    if (boxIds.length > 0) {
+      const { data: items } = await supabaseClient
+        .from('items')
+        .select('*')
+        .in('box_id', boxIds);
+      allItems = items || [];
+    } else {
+      allItems = [];
+    }
+
+    // Populate filter dropdowns
+    const boxOptions = boxList.map((b, idx) => ({
+      value: b.id,
+      label: `Box ${idx + 1} — ${b.room || 'Unassigned room'}`
+    }));
+    populateSelect(document.getElementById('filterBox'), boxOptions, 'All boxes');
+    populateSelect(document.getElementById('newItemBox'), boxOptions, 'Choose a box...');
+
+    const categories = [...new Set(allItems.map(i => i.category).filter(Boolean))].sort();
+    populateSelect(document.getElementById('filterCategory'),
+      categories.map(c => ({ value: c, label: c })), 'All categories');
+
+    const subcategories = [...new Set(allItems.map(i => i.subcategory).filter(Boolean))].sort();
+    populateSelect(document.getElementById('filterSubcategory'),
+      subcategories.map(c => ({ value: c, label: c })), 'All subcategories');
+
+    applyFiltersAndRender();
+  }
+
+  function getSortValue(item, field) {
+    if (field === 'quantity') return item.quantity || 0;
+    if (field === 'box') return (boxMap[item.box_id] && boxMap[item.box_id].number) || 0;
+    return (item[field] || '').toString().toLowerCase();
+  }
+
+  function applyFiltersAndRender() {
+    const search = document.getElementById('searchInput').value.trim().toLowerCase();
+    const filterBox = document.getElementById('filterBox').value;
+    const filterCategory = document.getElementById('filterCategory').value;
+    const filterSubcategory = document.getElementById('filterSubcategory').value;
+    const sortField = document.getElementById('sortField').value;
+    const sortDir = document.getElementById('sortDirection').value;
+
+    let filtered = allItems.filter(item => {
+      if (search && !(item.description || '').toLowerCase().includes(search)) return false;
+      if (filterBox && item.box_id !== filterBox) return false;
+      if (filterCategory && item.category !== filterCategory) return false;
+      if (filterSubcategory && item.subcategory !== filterSubcategory) return false;
+      return true;
+    });
+
+    filtered.sort((a, b) => {
+      const va = getSortValue(a, sortField);
+      const vb = getSortValue(b, sortField);
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    renderItems(filtered);
+
+    const distinctCount = filtered.length;
+    const totalQty = filtered.reduce((sum, i) => sum + (i.quantity || 1), 0);
+    document.getElementById('itemsSummary').textContent =
+      `${distinctCount} entr${distinctCount === 1 ? 'y' : 'ies'} ⬝ ${totalQty} item${totalQty === 1 ? '' : 's'} total`;
+  }
+
+  function renderItems(items) {
+    const listEl = document.getElementById('itemList');
+    const emptyEl = document.getElementById('emptyItems');
+    listEl.innerHTML = '';
+
+    if (items.length === 0) {
+      emptyEl.style.display = 'block';
+      return;
+    }
+    emptyEl.style.display = 'none';
+
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'item-row';
+      const qty = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : '';
+      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
+      const boxInfo = boxMap[item.box_id];
+      const boxLabel = boxInfo ? `Box ${boxInfo.number} — ${boxInfo.room || 'Unassigned room'}` : 'Unknown box';
+
+      let moveOptions = '<option value="">Move to...</option>';
+      Object.keys(boxMap).forEach(bId => {
+        if (bId === item.box_id) return;
+        const b = boxMap[bId];
+        moveOptions += `<option value="${bId}">Box ${b.number} — ${escapeHtml(b.room || 'Unassigned room')}</option>`;
+      });
+
+      div.innerHTML = `
+        <div class="top-line">
+          <div>
+            <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+            <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
+            <a class="box-tag" href="box_detail.html?id=${item.box_id}">${escapeHtml(boxLabel)}</a>
+          </div>
+        </div>
+        <div class="actions">
+          <select class="move-select" onchange="moveItem('${item.id}', this.value)">${moveOptions}</select>
+          <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+        </div>
+      `;
+      listEl.appendChild(div);
+    });
+  }
+
+  async function moveItem(itemId, targetBoxId) {
+    if (!targetBoxId) return;
+    const { error } = await supabaseClient
+      .from('items')
+      .update({ box_id: targetBoxId })
+      .eq('id', itemId);
+
+    if (error) {
+      showStatus('Failed to move item: ' + error.message, true);
+      return;
+    }
+    showStatus('Item moved.', false);
+    await loadData();
+  }
+
+  async function deleteItem(itemId) {
+    const { error } = await supabaseClient.from('items').delete().eq('id', itemId);
+    if (error) {
+      showStatus('Failed to remove item: ' + error.message, true);
+      return;
+    }
+    await recomputeShipmentTotals();
+    await loadData();
+  }
+
+  async function addItem() {
+    const targetBox = document.getElementById('newItemBox').value;
+    if (!targetBox) {
+      showStatus('Choose a box for this item first.', true);
+      return;
+    }
+    const description = document.getElementById('itemDescription').value.trim();
+    if (!description) {
+      showStatus('Give the item a description first.', true);
+      return;
+    }
+    const quantityRaw = document.getElementById('itemQuantity').value;
+    const payload = {
+      box_id: targetBox,
+      description: description,
+      quantity: quantityRaw ? parseInt(quantityRaw, 10) : 1,
+      category: document.getElementById('itemCategory').value.trim(),
+      subcategory: document.getElementById('itemSubcategory').value.trim(),
+      material: document.getElementById('itemMaterial').value.trim()
+    };
+
+    const { error } = await supabaseClient.from('items').insert(payload);
+    if (error) {
+      showStatus('Failed to add item: ' + error.message, true);
+      return;
+    }
+
+    document.getElementById('itemDescription').value = '';
+    document.getElementById('itemQuantity').value = '1';
+    document.getElementById('itemCategory').value = '';
+    document.getElementById('itemSubcategory').value = '';
+    document.getElementById('itemMaterial').value = '';
+    showStatus('Item added.', false);
+    await recomputeShipmentTotals();
+    await loadData();
+  }
+
+  async function init() {
+    if (!shipmentId) {
+      showStatus('No shipment specified.', true);
+      return;
+    }
+    const user = await requireAuth();
+    if (!user) return;
+
+    document.getElementById('backToShipment').href = 'shipment_detail.html?id=' + shipmentId;
+    if (boxId) {
+      const backToBox = document.getElementById('backToBox');
+      backToBox.href = 'box_detail.html?id=' + boxId;
+      backToBox.style.display = 'block';
+    }
+
+    await loadData();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
