@@ -45,6 +45,10 @@
     border-radius: 8px;
     padding: 10px 12px;
     margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
   }
   .item-row .top-line {
     display: flex;
@@ -67,7 +71,6 @@
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
-    margin-top: 6px;
   }
   select.move-select {
     font-size: 12px;
@@ -119,7 +122,6 @@
 
 <header>
   <a class="back" href="shipment_detail.html" id="backToShipment">← Back to shipment</a>
-  <a class="back" href="#" id="backToBox" style="display:none;">← Back to box</a>
   <h1>All items</h1>
   <div id="itemsSummary"></div>
 </header>
@@ -364,12 +366,10 @@
       });
 
       div.innerHTML = `
-        <div class="top-line">
-          <div>
-            <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
-            <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
-            <a class="box-tag" href="box_detail.html?id=${item.box_id}">${escapeHtml(boxLabel)}</a>
-          </div>
+        <div class="info">
+          <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+          <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
+          <a class="box-tag" href="box_detail.html?id=${item.box_id}">${escapeHtml(boxLabel)}</a>
         </div>
         <div class="actions">
           <select class="move-select" onchange="moveItem('${item.id}', this.value)">${moveOptions}</select>
@@ -451,12 +451,6 @@
     if (!user) return;
 
     document.getElementById('backToShipment').href = 'shipment_detail.html?id=' + shipmentId;
-    if (boxId) {
-      const backToBox = document.getElementById('backToBox');
-      backToBox.href = 'box_detail.html?id=' + boxId;
-      backToBox.style.display = 'block';
-    }
-
     await loadData();
   }
 
