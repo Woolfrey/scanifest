@@ -58,6 +58,13 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  .label .left-col {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2mm;
+  }
   .label .qr-box {
     flex-shrink: 0;
     width: 30mm;
@@ -69,24 +76,16 @@
     font-size: 8.5pt;
     line-height: 1.35;
   }
-  .label .top-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 2mm;
-    margin-bottom: 2mm;
-  }
   .label .box-number {
     font-weight: 700;
     font-size: 11pt;
-    min-width: 0;
+    margin-bottom: 2mm;
   }
   .label .badges {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     gap: 1mm;
-    flex-shrink: 0;
   }
   .label .icon-badge {
     display: flex;
@@ -114,12 +113,25 @@
     size: A4;
     margin: 10mm;
   }
-  /* Screen-only: on narrow viewports (phones), drop to one column so
-     labels get full width instead of competing for space. Print
-     always uses the 2-column A4 layout above, regardless of device. */
+  /* Screen-only: on narrow viewports (phones), drop to one column AND
+     stack each label vertically (QR+badges on top, details below),
+     since QR-beside-text was the actual squeeze, not just the grid.
+     Print always uses the 2-column, side-by-side A4 layout above,
+     regardless of device. */
   @media screen and (max-width: 600px) {
     .label-grid {
       grid-template-columns: 1fr;
+    }
+  }
+  @media screen and (max-width: 480px) {
+    .label {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .label .details {
+      text-align: left;
+      width: 100%;
     }
   }
 </style>
@@ -251,21 +263,29 @@
       const label = document.createElement('div');
       label.className = 'label';
 
+      const leftCol = document.createElement('div');
+      leftCol.className = 'left-col';
+
       const qrBox = document.createElement('div');
       qrBox.className = 'qr-box';
-      label.appendChild(qrBox);
+      leftCol.appendChild(qrBox);
 
       let badgesHtml = '';
       if (box.is_fragile) badgesHtml += `<div class="icon-badge">${fragileIcon()} FRAGILE</div>`;
       if (box.is_heavy) badgesHtml += `<div class="icon-badge">${heavyIcon()} HEAVY</div>`;
+      if (badgesHtml) {
+        const badges = document.createElement('div');
+        badges.className = 'badges';
+        badges.innerHTML = badgesHtml;
+        leftCol.appendChild(badges);
+      }
+
+      label.appendChild(leftCol);
 
       const details = document.createElement('div');
       details.className = 'details';
       details.innerHTML = `
-        <div class="top-row">
-          <div class="box-number">Box ${boxNumber} of ${totalBoxes}</div>
-          <div class="badges">${badgesHtml}</div>
-        </div>
+        <div class="box-number">Box ${boxNumber} of ${totalBoxes}</div>
         <div class="dims-line">${escapeHtml(dimsLine)}</div>
         ${destination && destination.name ? `<div class="contact-name">${escapeHtml(destination.name)}</div>` : ''}
         ${addressLine ? `<div class="address-line">${escapeHtml(addressLine)}</div>` : ''}
