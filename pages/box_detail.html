@@ -30,6 +30,18 @@
     padding: 6px 10px;
     color: #1a1a1a;
   }
+  a.qr-btn-full {
+    display: block;
+    text-align: center;
+    font-size: 13px;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 8px;
+    text-decoration: none;
+    margin-bottom: 20px;
+  }
+  a.qr-btn-full:hover { border-color: #999; }
   h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
   .h2-row {
     display: flex;
@@ -123,6 +135,7 @@
   <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
   <a class="view-link" id="viewLink" href="#">View public page</a>
 </header>
+<a class="qr-btn-full" id="qrCodesLink" href="#">Generate QR Codes</a>
 
 <div id="editForm" style="display:none;">
   <h2>Box details</h2>
@@ -289,6 +302,7 @@
     document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
     document.getElementById('viewLink').href = 'box_info.html?id=' + boxId;
     document.getElementById('seeAllItemsLink').href = 'item_list.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
+    document.getElementById('qrCodesLink').href = 'qr_code.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
 
     document.getElementById('room').value = box.room || '';
     document.getElementById('height').value = box.height || '';
@@ -430,8 +444,6 @@
   }
 
   async function deleteItem(itemId) {
-    if (!confirm('Are you sure?')) return;
-
     const { error } = await supabaseClient.from('items').delete().eq('id', itemId);
     if (error) {
       showStatus('Failed to remove item: ' + error.message, true);
