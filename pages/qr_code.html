@@ -73,15 +73,20 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 2mm;
     margin-bottom: 2mm;
   }
   .label .box-number {
     font-weight: 700;
     font-size: 11pt;
+    min-width: 0;
   }
   .label .badges {
     display: flex;
-    gap: 2mm;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1mm;
+    flex-shrink: 0;
   }
   .label .icon-badge {
     display: flex;
@@ -92,8 +97,10 @@
     border: 1px solid #000;
     border-radius: 2mm;
     padding: 0.5mm 1.5mm;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
-  .label .icon-badge svg { width: 3mm; height: 3mm; }
+  .label .icon-badge svg { width: 3mm; height: 3mm; flex-shrink: 0; }
   .label .dims-line { color: #333; margin-bottom: 2mm; }
   .label .contact-name { font-weight: 700; margin-bottom: 1mm; }
   .label .address-line { margin-bottom: 0.5mm; }
@@ -106,6 +113,14 @@
   @page {
     size: A4;
     margin: 10mm;
+  }
+  /* Screen-only: on narrow viewports (phones), drop to one column so
+     labels get full width instead of competing for space. Print
+     always uses the 2-column A4 layout above, regardless of device. */
+  @media screen and (max-width: 600px) {
+    .label-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 </head>
