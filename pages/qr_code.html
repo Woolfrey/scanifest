@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanifest — QR Labels</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #1a1a1a;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  a.back {
+    font-size: 13px;
+    color: #666;
+    text-decoration: none;
+  }
+  button.print-btn {
+    border: none;
+    border-radius: 6px;
+    background: #1a1a1a;
+    color: white;
+    font-size: 14px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  #status {
+    margin-bottom: 16px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    display: none;
+  }
+  #status.error { background: #fdecea; color: #c0392b; display: block; }
+
+  /* --- Label sheet --- */
+  .label-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6mm;
+  }
+  .label {
+    border: 1px solid #000;
+    border-radius: 2mm;
+    padding: 4mm;
+    display: flex;
+    gap: 4mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .label .qr-box {
+    flex-shrink: 0;
+    width: 30mm;
+    height: 30mm;
+  }
+  .label .details {
+    flex: 1;
+    min-width: 0;
+    font-size: 8.5pt;
+    line-height: 1.35;
+  }
+  .label .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 2mm;
+  }
+  .label .box-number {
+    font-weight: 700;
+    font-size: 11pt;
+  }
+  .label .badges {
+    display: flex;
+    gap: 2mm;
+  }
+  .label .icon-badge {
+    display: flex;
+    align-items: center;
+    gap: 1mm;
+    font-size: 7pt;
+    font-weight: 700;
+    border: 1px solid #000;
+    border-radius: 2mm;
+    padding: 0.5mm 1.5mm;
+  }
+  .label .icon-badge svg { width: 3mm; height: 3mm; }
+  .label .dims-line { color: #333; margin-bottom: 2mm; }
+  .label .contact-name { font-weight: 700; margin-bottom: 1mm; }
+  .label .address-line { margin-bottom: 0.5mm; }
+  .label .contact-line { margin-top: 2mm; color: #333; }
+
+  @media print {
+    header, #status, .no-print { display: none !important; }
+    body { margin: 0; padding: 0; max-width: none; }
+  }
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+</style>
+</head>
+<body>
+
+<header class="no-print">
+  <a class="back" id="backLink" href="#">← Back</a>
+  <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+</header>
+
+<div id="status"></div>
+
+<div class="label-grid" id="labelGrid"></div>
+
+<script>
+  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const statusEl = document.getElementById('status');
+  const params = new URLSearchParams(window.location.search);
+  const shipmentId = params.get('shipment_id');
+  const boxId = params.get('box_id'); // optional - present = single box mode
+
+  // Base URL for QR codes: derived from this page's own URL, so it
+  // adapts automatically if the repo/domain ever changes.
+  const boxInfoBaseUrl = window.location.href.split('?')[0].replace('qr_code.html', 'box_info.html');
+
+  function showStatus(message, isError) {
+    statusEl.textContent = message;
+    statusEl.className = isError ? 'error' : '';
+    statusEl.style.display = message ? 'block' : 'none';
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  // Simple inline icons - no image assets needed, scale cleanly for print.
+  function fragileIcon() {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2 L22 20 L2 20 Z" stroke-linejoin="round"/>
+      <line x1="12" y1="9" x2="12" y2="14"/>
+      <circle cx="12" cy="17" r="0.6" fill="currentColor"/>
+    </svg>`;
+  }
+  function heavyIcon() {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="9" width="4" height="6" rx="1"/>
+      <rect x="17" y="9" width="4" height="6" rx="1"/>
+      <line x1="7" y1="12" x2="17" y2="12"/>
+    </svg>`;
+  }
+
+  async function requireAuth() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = '../index.html';
+      return null;
+    }
+    return session.user;
+  }
+
+  async function loadAndRender() {
+    if (!shipmentId) {
+      showStatus('No shipment specified.', true);
+      return;
+    }
+
+    document.getElementById('backLink').href = boxId
+      ? 'box_detail.html?id=' + boxId
+      : 'shipment_detail.html?id=' + shipmentId;
+
+    const { data: destination } = await supabaseClient
+      .from('destination')
+      .select('*')
+      .eq('shipment_id', shipmentId)
+      .maybeSingle();
+
+    const { data: allBoxes, error } = await supabaseClient
+      .from('boxes')
+      .select('*')
+      .eq('shipment_id', shipmentId)
+      .order('created_date', { ascending: true });
+
+    if (error || !allBoxes) {
+      showStatus('Failed to load boxes.', true);
+      return;
+    }
+
+    const totalBoxes = allBoxes.length;
+    const boxesToPrint = boxId
+      ? allBoxes.filter(b => b.id === boxId)
+      : allBoxes;
+
+    if (boxesToPrint.length === 0) {
+      showStatus('No boxes found to generate labels for.', true);
+      return;
+    }
+
+    const gridEl = document.getElementById('labelGrid');
+    gridEl.innerHTML = '';
+
+    boxesToPrint.forEach(box => {
+      const boxNumber = allBoxes.findIndex(b => b.id === box.id) + 1;
+
+      const unit = box.is_imperial ? 'in' : 'cm';
+      const weightUnit = box.is_imperial ? 'lb' : 'kg';
+      const dimsParts = [];
+      if (box.height && box.width && box.length) {
+        dimsParts.push(`${box.height} × ${box.width} × ${box.length} ${unit}`);
+      }
+      if (box.weight) dimsParts.push(`${box.weight} ${weightUnit}`);
+      const dimsLine = dimsParts.join(' ⬝ ') || 'Dimensions not set';
+
+      const addressLine = destination
+        ? [destination.address_line_1, destination.address_line_2].filter(Boolean).join(', ')
+        : '';
+      const regionLine = destination
+        ? [destination.suburb, destination.postcode, destination.state, destination.country].filter(Boolean).join(', ')
+        : '';
+      const contactLine = destination
+        ? [destination.phone, destination.email].filter(Boolean).join(', ')
+        : '';
+
+      const label = document.createElement('div');
+      label.className = 'label';
+
+      const qrBox = document.createElement('div');
+      qrBox.className = 'qr-box';
+      label.appendChild(qrBox);
+
+      let badgesHtml = '';
+      if (box.is_fragile) badgesHtml += `<div class="icon-badge">${fragileIcon()} FRAGILE</div>`;
+      if (box.is_heavy) badgesHtml += `<div class="icon-badge">${heavyIcon()} HEAVY</div>`;
+
+      const details = document.createElement('div');
+      details.className = 'details';
+      details.innerHTML = `
+        <div class="top-row">
+          <div class="box-number">Box ${boxNumber} of ${totalBoxes}</div>
+          <div class="badges">${badgesHtml}</div>
+        </div>
+        <div class="dims-line">${escapeHtml(dimsLine)}</div>
+        ${destination && destination.name ? `<div class="contact-name">${escapeHtml(destination.name)}</div>` : ''}
+        ${addressLine ? `<div class="address-line">${escapeHtml(addressLine)}</div>` : ''}
+        ${regionLine ? `<div class="address-line">${escapeHtml(regionLine)}</div>` : ''}
+        ${contactLine ? `<div class="contact-line">${escapeHtml(contactLine)}</div>` : ''}
+      `;
+      label.appendChild(details);
+
+      gridEl.appendChild(label);
+
+      // Render the QR code into its box, encoding this box's public info page
+      new QRCode(qrBox, {
+        text: boxInfoBaseUrl + '?id=' + box.id,
+        width: 110,
+        height: 110,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    });
+  }
+
+  async function init() {
+    const user = await requireAuth();
+    if (!user) return;
+    await loadAndRender();
+  }
+
+  init();
+</script>
+
+</body>
+</html>
