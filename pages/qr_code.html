@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -80,6 +79,10 @@
     font-weight: 700;
     font-size: 11pt;
     margin-bottom: 2mm;
+  }
+  .label .room-tag {
+  font-weight: 400;
+  color: #666;
   }
   .label .badges {
     display: flex;
@@ -289,7 +292,7 @@
       const details = document.createElement('div');
       details.className = 'details';
       details.innerHTML = `
-        <div class="box-number">Box ${boxNumber} of ${totalBoxes}</div>
+        <div class="box-number">Box ${boxNumber} of ${totalBoxes}${box.room ? ' <span class="room-tag">— ' + escapeHtml(box.room) + '</span>' : ''}</div>
         <div class="dims-line">${escapeHtml(dimsLine)}</div>
         ${destination && destination.name ? `<div class="contact-name">${escapeHtml(destination.name)}</div>` : ''}
         ${addressLine ? `<div class="address-line">${escapeHtml(addressLine)}</div>` : ''}
