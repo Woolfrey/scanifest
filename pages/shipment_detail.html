@@ -37,6 +37,23 @@
     outline: none;
     border-bottom: 2px solid #1a1a1a;
   }
+  .name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .name-row .name-input { flex: 1; }
+  a.qr-btn {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.qr-btn:hover { border-color: #999; }
   #shipmentSummary {
     color: #666;
     font-size: 13px;
@@ -177,7 +194,10 @@
   <a class="back" href="shipments.html">← All shipments</a>
 </header>
 
-<input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
+<div class="name-row">
+  <input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
+  <a class="qr-btn" id="qrCodesLink" href="#">Generate QR Codes</a>
+</div>
 <div id="shipmentSummary"></div>
 
 <h2>Destination</h2>
@@ -603,6 +623,7 @@
     if (!user) return;
     currentUser = user;
     document.getElementById('allItemsLink').href = 'item_list.html?shipment_id=' + shipmentId;
+    document.getElementById('qrCodesLink').href = 'qr_code.html?shipment_id=' + shipmentId;
     await loadShipment();
     await loadDestination();
     await loadBoxes();
