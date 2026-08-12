@@ -135,7 +135,8 @@
   <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
   <a class="view-link" id="viewLink" href="#">View public page</a>
 </header>
-<a class="qr-btn-full" id="qrCodesLink" href="#">Generate QR Codes</a>
+<a class="qr-btn-full" id="qrCodesLink" href="#">Generate QR Code</a>
+<a class="qr-btn-full" id="packingListLink" href="#">Generate Packing List</a>
 
 <div id="editForm" style="display:none;">
   <h2>Box details</h2>
@@ -303,6 +304,7 @@
     document.getElementById('viewLink').href = 'box_info.html?id=' + boxId;
     document.getElementById('seeAllItemsLink').href = 'item_list.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
     document.getElementById('qrCodesLink').href = 'qr_code.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
+    document.getElementById('packingListLink').href = 'packing_list.html?id=' + boxId;
 
     document.getElementById('room').value = box.room || '';
     document.getElementById('height').value = box.height || '';
@@ -359,7 +361,8 @@
     const { data, error } = await supabaseClient
       .from('items')
       .select('*')
-      .eq('box_id', boxId);
+      .eq('box_id', boxId)
+      .order('description', { ascending: true });
 
     const listEl = document.getElementById('itemList');
     const emptyEl = document.getElementById('emptyItems');
