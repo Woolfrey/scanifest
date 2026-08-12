@@ -21,7 +21,24 @@
     text-decoration: none;
     margin-bottom: 4px;
   }
-  h1 { font-size: 20px; margin: 8px 0 2px 0; }
+  .title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 8px 0 2px 0;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  button.csv-btn {
+    font-size: 12px;
+    color: #1a1a1a;
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button.csv-btn:hover { border-color: #999; }
   #itemsSummary { color: #666; font-size: 13px; margin-bottom: 16px; }
   input, select {
     width: 100%;
@@ -122,10 +139,29 @@
 
 <header>
   <a class="back" href="shipment_detail.html" id="backToShipment">← Back to shipment</a>
-  <h1>All items</h1>
+  <div class="title-row">
+    <h1>All items</h1>
+    <button class="csv-btn" onclick="downloadCSV()">Download as CSV</button>
+  </div>
   <div id="itemsSummary"></div>
 </header>
 
+<h2>Add item</h2>
+<select id="newItemBox"></select>
+<input type="text" id="itemDescription" placeholder="Description">
+<div class="field-grid">
+  <input type="number" id="itemQuantity" placeholder="Qty" value="1">
+  <input type="text" id="itemCategory" placeholder="Category">
+</div>
+<div class="field-grid">
+  <input type="text" id="itemSubcategory" placeholder="Subcategory">
+  <input type="text" id="itemMaterial" placeholder="Material (optional)">
+</div>
+<button class="primary" onclick="addItem()">+ Add item</button>
+
+<div id="status"></div>
+
+<h2>Items</h2>
 <input type="text" id="searchInput" placeholder="Search by description..." oninput="applyFiltersAndRender()">
 
 <div class="control-grid">
@@ -148,24 +184,8 @@
   <option value="desc">Descending</option>
 </select>
 
-<h2>Items</h2>
 <div id="emptyItems" style="display:none;">No items match your filters.</div>
 <div id="itemList"></div>
-
-<h2>Add item</h2>
-<select id="newItemBox"></select>
-<input type="text" id="itemDescription" placeholder="Description">
-<div class="field-grid">
-  <input type="number" id="itemQuantity" placeholder="Qty" value="1">
-  <input type="text" id="itemCategory" placeholder="Category">
-</div>
-<div class="field-grid">
-  <input type="text" id="itemSubcategory" placeholder="Subcategory">
-  <input type="text" id="itemMaterial" placeholder="Material (optional)">
-</div>
-<button class="primary" onclick="addItem()">+ Add item</button>
-
-<div id="status"></div>
 
 <script>
   const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
@@ -179,6 +199,7 @@
 
   let boxMap = {}; // box_id -> {number, room}
   let allItems = [];
+  let currentFilteredItems = [];
 
   function showStatus(message, isError) {
     statusEl.textContent = message;
@@ -331,6 +352,7 @@
       return 0;
     });
 
+    currentFilteredItems = filtered;
     renderItems(filtered);
 
     const distinctCount = filtered.length;
@@ -378,6 +400,42 @@
       `;
       listEl.appendChild(div);
     });
+  }
+
+  function csvEscape(val) {
+    const str = String(val === undefined || val === null ? '' : val);
+    if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+    return str;
+  }
+
+  function downloadCSV() {
+    if (currentFilteredItems.length === 0) {
+      showStatus('No items to export.', true);
+      return;
+    }
+    const rows = [['Description', 'Quantity', 'Category', 'Subcategory', 'Material', 'Box']];
+    currentFilteredItems.forEach(item => {
+      const boxInfo = boxMap[item.box_id];
+      const boxLabel = boxInfo ? `Box ${boxInfo.number} — ${boxInfo.room || 'Unassigned room'}` : '';
+      rows.push([
+        item.description || '',
+        item.quantity || 1,
+        item.category || '',
+        item.subcategory || '',
+        item.material || '',
+        boxLabel
+      ]);
+    });
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scanifest-items.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   async function moveItem(itemId, targetBoxId) {
