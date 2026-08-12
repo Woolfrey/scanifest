@@ -146,19 +146,6 @@
   <div id="itemsSummary"></div>
 </header>
 
-<h2>Add item</h2>
-<select id="newItemBox"></select>
-<input type="text" id="itemDescription" placeholder="Description">
-<div class="field-grid">
-  <input type="number" id="itemQuantity" placeholder="Qty" value="1">
-  <input type="text" id="itemCategory" placeholder="Category">
-</div>
-<div class="field-grid">
-  <input type="text" id="itemSubcategory" placeholder="Subcategory">
-  <input type="text" id="itemMaterial" placeholder="Material (optional)">
-</div>
-<button class="primary" onclick="addItem()">+ Add item</button>
-
 <div id="status"></div>
 
 <h2>Items</h2>
@@ -186,6 +173,19 @@
 
 <div id="emptyItems" style="display:none;">No items match your filters.</div>
 <div id="itemList"></div>
+
+<h2>Add item</h2>
+<select id="newItemBox"></select>
+<input type="text" id="itemDescription" placeholder="Description">
+<div class="field-grid">
+  <input type="number" id="itemQuantity" placeholder="Qty" value="1">
+  <input type="text" id="itemCategory" placeholder="Category">
+</div>
+<div class="field-grid">
+  <input type="text" id="itemSubcategory" placeholder="Subcategory">
+  <input type="text" id="itemMaterial" placeholder="Material (optional)">
+</div>
+<button class="primary" onclick="addItem()">+ Add item</button>
 
 <script>
   const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
