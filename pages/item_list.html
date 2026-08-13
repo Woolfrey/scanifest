@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — All Items</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 480px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header { margin-bottom: 12px; }
@@ -188,15 +191,11 @@
 <button class="primary" onclick="addItem()">+ Add item</button>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  const statusEl = document.getElementById('status');
   const params = new URLSearchParams(window.location.search);
   const shipmentId = params.get('shipment_id');
   const boxId = params.get('box_id'); // optional - present when arriving from a specific box
 
+  const statusEl = document.getElementById('status');
   let boxMap = {}; // box_id -> {number, room}
   let allItems = [];
   let currentFilteredItems = [];
@@ -205,64 +204,6 @@
     statusEl.textContent = message;
     statusEl.className = isError ? 'error' : 'success';
     statusEl.style.display = message ? 'block' : 'none';
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  function boxVolumeLiters(box) {
-    if (!box.height || !box.width || !box.length) return 0;
-    let h = box.height, w = box.width, l = box.length;
-    if (box.is_imperial) { h *= 2.54; w *= 2.54; l *= 2.54; }
-    return (h * w * l) / 1000;
-  }
-  function boxWeightKg(box) {
-    if (!box.weight) return 0;
-    return box.is_imperial ? box.weight * 0.453592 : box.weight;
-  }
-
-  async function recomputeShipmentTotals() {
-    const { data: boxes } = await supabaseClient
-      .from('boxes')
-      .select('id, height, width, length, weight, is_imperial')
-      .eq('shipment_id', shipmentId);
-
-    const boxList = boxes || [];
-    const boxIds = boxList.map(b => b.id);
-
-    let itemCount = 0;
-    if (boxIds.length > 0) {
-      const { data: itemQuantities } = await supabaseClient
-        .from('items')
-        .select('quantity')
-        .in('box_id', boxIds);
-      itemCount = (itemQuantities || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
-    }
-
-    const totalVolume = boxList.reduce((sum, b) => sum + boxVolumeLiters(b), 0);
-    const totalWeight = boxList.reduce((sum, b) => sum + boxWeightKg(b), 0);
-
-    await supabaseClient
-      .from('shipments')
-      .update({
-        number_of_boxes: boxList.length,
-        number_of_items: itemCount,
-        total_volume: totalVolume,
-        total_weight: totalWeight
-      })
-      .eq('id', shipmentId);
-  }
-
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = '../index.html';
-      return null;
-    }
-    return session.user;
   }
 
   function populateSelect(selectEl, options, allLabel) {
@@ -413,17 +354,17 @@
       showStatus('No items to export.', true);
       return;
     }
-    const rows = [['Description', 'Quantity', 'Category', 'Subcategory', 'Material', 'Box']];
+    const rows = [['Description', 'Quantity', 'Category', 'Subcategory', 'Material', 'Box Number', 'Room']];
     currentFilteredItems.forEach(item => {
       const boxInfo = boxMap[item.box_id];
-      const boxLabel = boxInfo ? `Box ${boxInfo.number} — ${boxInfo.room || 'Unassigned room'}` : '';
       rows.push([
         item.description || '',
         item.quantity || 1,
         item.category || '',
         item.subcategory || '',
         item.material || '',
-        boxLabel
+        boxInfo ? boxInfo.number : '',
+        boxInfo ? (boxInfo.room || '') : ''
       ]);
     });
     const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
@@ -461,7 +402,7 @@
       showStatus('Failed to remove item: ' + error.message, true);
       return;
     }
-    await recomputeShipmentTotals();
+    await recomputeShipmentTotals(shipmentId);
     await loadData();
   }
 
@@ -498,7 +439,7 @@
     document.getElementById('itemSubcategory').value = '';
     document.getElementById('itemMaterial').value = '';
     showStatus('Item added.', false);
-    await recomputeShipmentTotals();
+    await recomputeShipmentTotals(shipmentId);
     await loadData();
   }
 
@@ -507,7 +448,7 @@
       showStatus('No shipment specified.', true);
       return;
     }
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
 
     document.getElementById('backToShipment').href = 'shipment_detail.html?id=' + shipmentId;
