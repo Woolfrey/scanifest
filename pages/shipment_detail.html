@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — Shipment</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 480px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
@@ -24,13 +27,6 @@
     color: #666;
     text-decoration: none;
   }
-  h1 {
-    font-size: 22px;
-    margin: 4px 0 0 0;
-    border: none;
-    padding: 4px 0;
-    width: 100%;
-  }
   input.name-input {
     font-size: 22px;
     font-weight: 700;
@@ -39,12 +35,45 @@
     width: 100%;
     font-family: inherit;
     color: #1a1a1a;
+    box-sizing: border-box;
   }
   input.name-input:focus {
     outline: none;
     border-bottom: 2px solid #1a1a1a;
   }
+  .name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .name-row .name-input { flex: 1; }
+  a.qr-btn {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 10px;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.qr-btn:hover { border-color: #999; }
+  #shipmentSummary {
+    color: #666;
+    font-size: 13px;
+    margin: 2px 0 20px 0;
+  }
   h2 { font-size: 15px; margin-top: 28px; margin-bottom: 10px; color: #444; }
+  .h2-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 28px;
+    margin-bottom: 10px;
+  }
+  .h2-row h2 { margin: 0; }
+  .h2-row a { font-size: 12px; color: #666; text-decoration: none; }
+  .h2-row a:hover { text-decoration: underline; }
   .field-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -61,17 +90,33 @@
     box-sizing: border-box;
   }
   input:focus { outline: none; border-color: #1a1a1a; }
+  select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 13px;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+  }
+  .box-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
   .box-card {
+    flex: 1;
     display: block;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 12px;
-    margin-bottom: 8px;
     text-decoration: none;
     color: #1a1a1a;
+    min-width: 0;
   }
   .box-card:hover { border-color: #999; }
-  .box-card .room { font-weight: 600; font-size: 15px; }
+  .box-card .number { font-weight: 600; font-size: 15px; }
   .box-card .meta { color: #666; font-size: 12px; margin-top: 3px; }
   .badge {
     display: inline-block;
@@ -82,6 +127,48 @@
     background: #f0f0f0;
     color: #555;
   }
+  button.delete-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    color: #c0392b;
+    font-size: 13px;
+    padding: 0 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .delete-panel {
+    position: relative;
+    border: 1px solid #f0c0c0;
+    background: #fdf5f5;
+    border-radius: 8px;
+    padding: 12px;
+    margin: -4px 0 8px 0;
+    font-size: 13px;
+  }
+  .delete-panel .warn { color: #c0392b; margin-bottom: 8px; padding-right: 20px; }
+  .close-panel-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: #c0392b;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .delete-panel-buttons { display: flex; gap: 8px; }
+  .delete-panel-buttons button {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn-move { background: #1a1a1a; color: white; border: none; }
+  .btn-delete-all { background: white; color: #c0392b; border: 1px solid #c0392b; }
   #emptyBoxes { color: #666; font-size: 14px; margin-bottom: 12px; }
   button.primary {
     width: 100%;
@@ -111,11 +198,20 @@
   <a class="back" href="shipments.html">← All shipments</a>
 </header>
 
-<input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
+<div class="name-row">
+  <input type="text" id="shipmentName" class="name-input" placeholder="Shipment name">
+  <a class="qr-btn" id="qrCodesLink" href="#">Generate QR Codes</a>
+</div>
+<div id="shipmentSummary"></div>
+
+<a id="allItemsLink" href="#" style="display:block; font-size:13px; color:#666; text-decoration:none; margin-bottom:20px;">See all items</a>
 
 <h2>Destination</h2>
 <input type="text" id="contactName" placeholder="Contact name">
-<input type="text" id="contactPhone" placeholder="Contact phone">
+<div class="field-grid">
+  <input type="text" id="contactPhone" placeholder="Contact number">
+  <input type="text" id="contactEmail" placeholder="Contact email">
+</div>
 <input type="text" id="addressLine1" placeholder="Address line 1">
 <input type="text" id="addressLine2" placeholder="Address line 2">
 <div class="field-grid">
@@ -137,15 +233,12 @@
 <div id="status"></div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
   const statusEl = document.getElementById('status');
   const saveIndicator = document.getElementById('saveIndicator');
   const params = new URLSearchParams(window.location.search);
   const shipmentId = params.get('id');
   let currentUser = null;
+  let openDeletePanelBoxId = null;
 
   function showStatus(message, isError) {
     statusEl.textContent = message;
@@ -157,15 +250,6 @@
     saveIndicator.className = 'success';
     clearTimeout(flashSaved._t);
     flashSaved._t = setTimeout(() => { saveIndicator.style.display = 'none'; }, 1500);
-  }
-
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = 'index.html';
-      return null;
-    }
-    return session.user;
   }
 
   async function loadShipment() {
@@ -180,6 +264,13 @@
       return;
     }
     document.getElementById('shipmentName').value = data.name || '';
+
+    const boxes = data.number_of_boxes ?? 0;
+    const items = data.number_of_items ?? 0;
+    const volume = data.total_volume ?? 0;
+    const weight = data.total_weight ?? 0;
+    document.getElementById('shipmentSummary').textContent =
+      `${boxes} box${boxes === 1 ? '' : 'es'} ⬝ ${items} item${items === 1 ? '' : 's'} ⬝ ${Number(volume).toFixed(1)} L ⬝ ${Number(weight).toFixed(1)} kg`;
   }
 
   async function saveAll() {
@@ -203,6 +294,7 @@
       shipment_id: shipmentId,
       name: document.getElementById('contactName').value.trim(),
       phone: document.getElementById('contactPhone').value.trim(),
+      email: document.getElementById('contactEmail').value.trim(),
       address_line_1: document.getElementById('addressLine1').value.trim(),
       address_line_2: document.getElementById('addressLine2').value.trim(),
       suburb: document.getElementById('suburb').value.trim(),
@@ -237,6 +329,7 @@
     if (data) {
       document.getElementById('contactName').value = data.name || '';
       document.getElementById('contactPhone').value = data.phone || '';
+      document.getElementById('contactEmail').value = data.email || '';
       document.getElementById('addressLine1').value = data.address_line_1 || '';
       document.getElementById('addressLine2').value = data.address_line_2 || '';
       document.getElementById('suburb').value = data.suburb || '';
@@ -246,44 +339,193 @@
     }
   }
 
+  let currentBoxes = [];
+  let itemCountByBox = {};
+
   async function loadBoxes() {
-    const { data, error } = await supabaseClient
+    const { data: boxes, error } = await supabaseClient
       .from('boxes')
       .select('*')
-      .eq('shipment_id', shipmentId);
+      .eq('shipment_id', shipmentId)
+      .order('created_date', { ascending: true });
 
     if (error) {
       showStatus('Failed to load boxes: ' + error.message, true);
       return;
     }
 
+    currentBoxes = boxes || [];
+    const boxIds = currentBoxes.map(b => b.id);
+
+    itemCountByBox = {};
+    if (boxIds.length > 0) {
+      const { data: items } = await supabaseClient
+        .from('items')
+        .select('id, box_id')
+        .in('box_id', boxIds);
+      (items || []).forEach(item => {
+        itemCountByBox[item.box_id] = (itemCountByBox[item.box_id] || 0) + 1;
+      });
+    }
+
+    renderBoxes();
+  }
+
+  function renderBoxes() {
     const listEl = document.getElementById('boxList');
     const emptyEl = document.getElementById('emptyBoxes');
     listEl.innerHTML = '';
 
-    if (!data || data.length === 0) {
+    if (currentBoxes.length === 0) {
       emptyEl.style.display = 'block';
       return;
     }
     emptyEl.style.display = 'none';
 
-    data.forEach(box => {
-      const a = document.createElement('a');
-      a.className = 'box-card';
-      a.href = 'box_detail.html?id=' + box.id;
+    currentBoxes.forEach((box, index) => {
+      const boxNumber = index + 1;
+      const unit = box.is_imperial ? 'in' : 'cm';
+      const weightUnit = box.is_imperial ? 'lb' : 'kg';
       const dims = (box.height && box.width && box.length)
-        ? `${box.height} × ${box.width} × ${box.length}${box.metric === false ? ' in' : ' cm'}`
+        ? `${box.height} × ${box.width} × ${box.length} ${unit}`
         : 'Dimensions not set';
+      const weightText = box.weight ? ` · ${box.weight} ${weightUnit}` : '';
+
       let badges = '';
       if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
       if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
-      if (box.is_public === false) badges += '<span class="badge">Private</span>';
+      if (box.is_private) badges += '<span class="badge">Private</span>';
+
+      const row = document.createElement('div');
+
+      const boxRow = document.createElement('div');
+      boxRow.className = 'box-row';
+
+      const a = document.createElement('a');
+      a.className = 'box-card';
+      a.href = 'box_detail.html?id=' + box.id;
       a.innerHTML = `
-        <div class="room">${escapeHtml(box.room || 'Unassigned room')}${badges}</div>
-        <div class="meta">${escapeHtml(dims)}</div>
+        <div class="number">Box ${boxNumber}${badges}</div>
+        <div class="meta">${escapeHtml(box.room || 'Unassigned room')} · ${escapeHtml(dims)}${weightText}</div>
       `;
-      listEl.appendChild(a);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => toggleDeletePanel(box.id);
+
+      boxRow.appendChild(a);
+      boxRow.appendChild(deleteBtn);
+      row.appendChild(boxRow);
+
+      if (openDeletePanelBoxId === box.id) {
+        row.appendChild(buildDeletePanel(box, boxNumber));
+      }
+
+      listEl.appendChild(row);
     });
+  }
+
+  function toggleDeletePanel(boxId) {
+    const itemCount = itemCountByBox[boxId] || 0;
+    if (itemCount === 0) {
+      if (confirm('Delete this box?')) {
+        deleteBoxCompletely(boxId);
+      }
+      return;
+    }
+    openDeletePanelBoxId = (openDeletePanelBoxId === boxId) ? null : boxId;
+    renderBoxes();
+  }
+
+  function buildDeletePanel(box, boxNumber) {
+    const itemCount = itemCountByBox[box.id] || 0;
+    const otherBoxes = currentBoxes.filter(b => b.id !== box.id);
+
+    const panel = document.createElement('div');
+    panel.className = 'delete-panel';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'close-panel-btn';
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Close';
+    closeBtn.onclick = () => {
+      openDeletePanelBoxId = null;
+      renderBoxes();
+    };
+    panel.appendChild(closeBtn);
+
+    const warn = document.createElement('div');
+    warn.className = 'warn';
+    warn.textContent = `Box ${boxNumber} has ${itemCount} item${itemCount === 1 ? '' : 's'}.`;
+    panel.appendChild(warn);
+
+    if (otherBoxes.length > 0) {
+      const select = document.createElement('select');
+      select.id = 'moveTarget_' + box.id;
+      otherBoxes.forEach(b => {
+        const idx = currentBoxes.indexOf(b) + 1;
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = `Box ${idx} — ${b.room || 'Unassigned room'}`;
+        select.appendChild(opt);
+      });
+      panel.appendChild(select);
+    }
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'delete-panel-buttons';
+
+    if (otherBoxes.length > 0) {
+      const moveBtn = document.createElement('button');
+      moveBtn.className = 'btn-move';
+      moveBtn.textContent = 'Move items & delete box';
+      moveBtn.onclick = () => moveItemsAndDeleteBox(box.id);
+      btnRow.appendChild(moveBtn);
+    }
+
+    const deleteAllBtn = document.createElement('button');
+    deleteAllBtn.className = 'btn-delete-all';
+    deleteAllBtn.textContent = 'Delete box & items';
+    deleteAllBtn.onclick = () => {
+      if (confirm('All associated items will be deleted. Are you sure?')) {
+        deleteBoxCompletely(box.id);
+      }
+    };
+    btnRow.appendChild(deleteAllBtn);
+
+    panel.appendChild(btnRow);
+    return panel;
+  }
+
+  async function moveItemsAndDeleteBox(boxId) {
+    const select = document.getElementById('moveTarget_' + boxId);
+    const targetBoxId = select.value;
+
+    const { error: moveError } = await supabaseClient
+      .from('items')
+      .update({ box_id: targetBoxId })
+      .eq('box_id', boxId);
+
+    if (moveError) {
+      showStatus('Failed to move items: ' + moveError.message, true);
+      return;
+    }
+
+    await deleteBoxCompletely(boxId);
+  }
+
+  async function deleteBoxCompletely(boxId) {
+    const { error } = await supabaseClient.from('boxes').delete().eq('id', boxId);
+    if (error) {
+      showStatus('Failed to delete box: ' + error.message, true);
+      return;
+    }
+    openDeletePanelBoxId = null;
+    showStatus('Box deleted.', false);
+    await recomputeShipmentTotals(shipmentId);
+    await loadShipment();
+    await loadBoxes();
   }
 
   async function addBox() {
@@ -291,7 +533,7 @@
       .from('boxes')
       .insert({
         shipment_id: shipmentId,
-        is_public: true,
+        is_private: false,
         is_heavy: false,
         is_fragile: false
       })
@@ -302,6 +544,8 @@
       return;
     }
 
+    await recomputeShipmentTotals(shipmentId);
+
     if (data && data[0]) {
       window.location.href = 'box_detail.html?id=' + data[0].id;
     } else {
@@ -309,20 +553,16 @@
     }
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
   async function init() {
     if (!shipmentId) {
       showStatus('No shipment specified.', true);
       return;
     }
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
     currentUser = user;
+    document.getElementById('allItemsLink').href = 'item_list.html?shipment_id=' + shipmentId;
+    document.getElementById('qrCodesLink').href = 'qr_code.html?shipment_id=' + shipmentId;
     await loadShipment();
     await loadDestination();
     await loadBoxes();
