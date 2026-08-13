@@ -17,7 +17,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
   a.back, a.edit-link {
     font-size: 13px;
@@ -30,21 +30,6 @@
     padding: 6px 10px;
     color: #1a1a1a;
   }
-  #shipmentContext {
-    font-size: 13px;
-    color: #666;
-    margin-bottom: 8px;
-  }
-  #shipmentContext b { color: #1a1a1a; }
-  #destinationContext {
-    font-size: 12px;
-    color: #888;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #eee;
-    line-height: 1.6;
-  }
-  #destinationContext .label { color: #666; }
   h1 { font-size: 24px; margin: 4px 0; }
   .badge {
     display: inline-block;
@@ -63,9 +48,9 @@
     padding: 10px 12px;
     margin-bottom: 6px;
   }
-  .item-row .desc { font-size: 14px; font-weight: 400; }
+  .item-row .desc { font-weight: 600; font-size: 14px; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
-  #emptyItems, #privateNotice { color: #666; font-size: 14px; }
+  #emptyItems { color: #666; font-size: 14px; }
   #status {
     margin-top: 16px;
     padding: 10px;
@@ -79,23 +64,15 @@
 <body>
 
 <header>
-  <div>
-    <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
-    <br>
-    <a class="back" id="boxBackLink" href="#">← Back to box</a>
-  </div>
+  <a class="back" id="backLink" href="shipments.html">← Back</a>
   <a class="edit-link" id="editLink" href="#" style="display:none;">Edit</a>
 </header>
 
 <div id="content" style="display:none;">
-  <div id="shipmentContext" style="display:none;"></div>
-  <div id="destinationContext" style="display:none;"></div>
-
   <h1 id="roomName"></h1>
   <div class="dims" id="dims"></div>
 
   <h2>Items in this box</h2>
-  <div id="privateNotice" style="display:none;">Contents of this box are private.</div>
   <div id="emptyItems" style="display:none;">No items recorded in this box yet.</div>
   <div id="itemList"></div>
 </div>
@@ -129,22 +106,21 @@
       .select('*')
       .eq('id', boxId)
       .maybeSingle();
-  
+
     if (error || !box) {
-      showStatus('This box doesn\'t exist.', true);
+      showStatus('This box doesn\'t exist, or is set to private.', true);
       return;
     }
-    
+
     document.getElementById('content').style.display = 'block';
-    document.getElementById('boxBackLink').href = 'box_detail.html?id=' + boxId;
-    
+
     let badges = '';
     if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
     if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
     document.getElementById('roomName').innerHTML = escapeHtml(box.room || 'Unassigned room') + badges;
 
-    const unit = box.is_imperial ? 'in' : 'cm';
-    const weightUnit = box.is_imperial ? 'lb' : 'kg';
+    const unit = box.metric === false ? 'in' : 'cm';
+    const weightUnit = box.metric === false ? 'lb' : 'kg';
     let dimsText = '';
     if (box.height && box.width && box.length) {
       dimsText += `${box.height} × ${box.width} × ${box.length} ${unit}`;
@@ -154,42 +130,7 @@
     }
     document.getElementById('dims').textContent = dimsText || 'No dimensions recorded';
 
-    // Shipment name/counts + destination are shown to anyone (this is
-    // meant to work like a shipping label - who it's for, what's
-    // inside), via a scoped RPC that only returns the one row tied to
-    // this box_id, not the whole shipments/destination tables.
-    const { data: info, error: infoError } = await supabaseClient
-      .rpc('get_box_shipment_info', { box_id_input: boxId });
-
-    if (!infoError && info && info.length > 0) {
-      const row = info[0];
-      const boxesCount = row.number_of_boxes ?? 0;
-      const itemsCount = row.number_of_items ?? 0;
-      const shipCtx = document.getElementById('shipmentContext');
-      shipCtx.innerHTML = `<b>${escapeHtml(row.shipment_name || 'Untitled shipment')}</b> ⬝ 1 of ${boxesCount} box${boxesCount === 1 ? '' : 'es'}`;
-      shipCtx.style.display = 'block';
-
-      const lines = [];
-      if (row.destination_name) lines.push(escapeHtml(row.destination_name));
-
-      const addressLine = [row.address_line_1, row.address_line_2].filter(Boolean).join(', ');
-      if (addressLine) lines.push(escapeHtml(addressLine));
-
-      const regionLine = [row.suburb, row.postcode, row.state, row.country].filter(Boolean).join(', ');
-      if (regionLine) lines.push(escapeHtml(regionLine));
-
-      const contactLine = [row.destination_phone, row.destination_email].filter(Boolean).join(', ');
-      if (contactLine) lines.push(escapeHtml(contactLine));
-
-      if (lines.length > 0) {
-        const destCtx = document.getElementById('destinationContext');
-        destCtx.innerHTML = '<span class="label">Destination:</span><br>' + lines.join('<br>');
-        destCtx.style.display = 'block';
-      }
-    }
-
-    // Edit link is separate from the above - only the actual owner
-    // gets it, checked via the normal RLS-protected shipments query.
+    // Check if the current user owns the parent shipment (RLS-enforced) - if so, show Edit link
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
       const { data: ownedShipment } = await supabaseClient
@@ -197,20 +138,12 @@
         .select('id')
         .eq('id', box.shipment_id)
         .maybeSingle();
-
       if (ownedShipment) {
         const editLink = document.getElementById('editLink');
         editLink.href = 'box_detail.html?id=' + boxId;
         editLink.style.display = 'inline-block';
         document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
       }
-    }
-
-    // Private boxes never show their contents on this page, even to the
-    // owner - the owner manages items via the Edit Box page instead.
-    if (box.is_private) {
-      document.getElementById('privateNotice').style.display = 'block';
-      return;
     }
 
     loadItems();
@@ -235,11 +168,13 @@
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const qty = item.quantity ? ` x${item.quantity}` : '';
-      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
+      const metaParts = [];
+      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
+      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
+      if (item.material) metaParts.push(item.material);
       div.innerHTML = `
-        <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
-        <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
+        <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
+        <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
       `;
       listEl.appendChild(div);
     });
