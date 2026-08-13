@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — Packing List</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 800px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
@@ -50,13 +53,14 @@
     border-bottom: 2px solid #1a1a1a;
     padding-bottom: 16px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
   }
-  .summary-left { flex: 1; min-width: 0; }
-  .summary-right { text-align: right; min-width: 0; }
+  .summary-left { flex: 1; min-width: 200px; }
+  .summary-right { text-align: right; min-width: 200px; }
   .box-number { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
   .room-tag { font-weight: 400; color: #666; }
   .dims-line { color: #333; font-size: 13px; margin-bottom: 8px; }
-  .badges-row { display: flex; gap: 6px; }
+  .badges-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .icon-badge {
     display: inline-flex;
     align-items: center;
@@ -99,6 +103,11 @@
     size: A4;
     margin: 15mm;
   }
+  @media screen and (max-width: 500px) {
+    .summary-row { flex-direction: column; }
+    .summary-right { text-align: left; }
+    table { font-size: 12px; }
+  }
 </style>
 </head>
 <body>
@@ -134,48 +143,15 @@
 </div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  const statusEl = document.getElementById('status');
   const params = new URLSearchParams(window.location.search);
   const boxId = params.get('id');
+
+  const statusEl = document.getElementById('status');
 
   function showStatus(message, isError) {
     statusEl.textContent = message;
     statusEl.className = isError ? 'error' : '';
     statusEl.style.display = message ? 'block' : 'none';
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
-
-  function fragileIcon() {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 2 L22 20 L2 20 Z" stroke-linejoin="round"/>
-      <line x1="12" y1="9" x2="12" y2="14"/>
-      <circle cx="12" cy="17" r="0.6" fill="currentColor"/>
-    </svg>`;
-  }
-  function heavyIcon() {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <rect x="3" y="9" width="4" height="6" rx="1"/>
-      <rect x="17" y="9" width="4" height="6" rx="1"/>
-      <line x1="7" y1="12" x2="17" y2="12"/>
-    </svg>`;
-  }
-
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = '../index.html';
-      return null;
-    }
-    return session.user;
   }
 
   async function loadAndRender() {
@@ -276,7 +252,7 @@
   }
 
   async function init() {
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
     await loadAndRender();
   }
