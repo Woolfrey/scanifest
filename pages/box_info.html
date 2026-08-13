@@ -5,19 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — Box</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    max-width: 480px;
+    max-width: 560px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
   }
   a.back, a.edit-link {
     font-size: 13px;
@@ -30,17 +33,38 @@
     padding: 6px 10px;
     color: #1a1a1a;
   }
-  h1 { font-size: 24px; margin: 4px 0; }
-  .badge {
-    display: inline-block;
-    font-size: 12px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    margin-left: 6px;
-    background: #f0f0f0;
-    color: #555;
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
   }
-  .dims { color: #666; font-size: 14px; margin-bottom: 20px; }
+  .summary-left { flex: 1; min-width: 200px; }
+  .summary-right { text-align: right; min-width: 200px; }
+  .shipment-name { font-size: 14px; color: #666; margin-bottom: 6px; }
+  .box-number { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+  .room-tag { font-weight: 400; color: #666; }
+  .dims-line { color: #333; font-size: 13px; margin-bottom: 8px; }
+  .badges-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .icon-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid #c0392b;
+    color: #c0392b;
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .icon-badge svg { width: 12px; height: 12px; }
+  .contact-name { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .address-line { font-size: 13px; color: #333; margin-bottom: 2px; }
+  .contact-line { font-size: 13px; color: #333; margin-top: 4px; }
   h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
   .item-row {
     border: 1px solid #eee;
@@ -48,9 +72,9 @@
     padding: 10px 12px;
     margin-bottom: 6px;
   }
-  .item-row .desc { font-weight: 600; font-size: 14px; }
+  .item-row .desc { font-size: 14px; font-weight: 400; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
-  #emptyItems { color: #666; font-size: 14px; }
+  #emptyItems, #privateNotice { color: #666; font-size: 14px; }
   #status {
     margin-top: 16px;
     padding: 10px;
@@ -59,20 +83,37 @@
     display: none;
   }
   #status.error { background: #fdecea; color: #c0392b; display: block; }
+
+  @media screen and (max-width: 500px) {
+    .summary-row { flex-direction: column; }
+    .summary-right { text-align: left; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <a class="back" id="backLink" href="shipments.html">← Back</a>
+  <div>
+    <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
+    <br>
+    <a class="back" id="boxBackLink" href="#">← Back to box</a>
+  </div>
   <a class="edit-link" id="editLink" href="#" style="display:none;">Edit</a>
 </header>
 
 <div id="content" style="display:none;">
-  <h1 id="roomName"></h1>
-  <div class="dims" id="dims"></div>
+  <div class="summary-row">
+    <div class="summary-left">
+      <div class="shipment-name" id="shipmentNameLine" style="display:none;"></div>
+      <div class="box-number" id="boxNumberLine"></div>
+      <div class="dims-line" id="dimsLine"></div>
+      <div class="badges-row" id="badgesRow"></div>
+    </div>
+    <div class="summary-right" id="destinationBlock"></div>
+  </div>
 
   <h2>Items in this box</h2>
+  <div id="privateNotice" style="display:none;">Contents of this box are private.</div>
   <div id="emptyItems" style="display:none;">No items recorded in this box yet.</div>
   <div id="itemList"></div>
 </div>
@@ -80,10 +121,6 @@
 <div id="status"></div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
   const statusEl = document.getElementById('status');
   const params = new URLSearchParams(window.location.search);
   const boxId = params.get('id');
@@ -94,12 +131,6 @@
     statusEl.style.display = message ? 'block' : 'none';
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
   async function loadBox() {
     const { data: box, error } = await supabaseClient
       .from('boxes')
@@ -108,29 +139,74 @@
       .maybeSingle();
 
     if (error || !box) {
-      showStatus('This box doesn\'t exist, or is set to private.', true);
+      showStatus('This box doesn\'t exist.', true);
       return;
     }
 
     document.getElementById('content').style.display = 'block';
+    document.getElementById('boxBackLink').href = 'box_detail.html?id=' + boxId;
 
-    let badges = '';
-    if (box.is_heavy) badges += '<span class="badge">Heavy</span>';
-    if (box.is_fragile) badges += '<span class="badge">Fragile</span>';
-    document.getElementById('roomName').innerHTML = escapeHtml(box.room || 'Unassigned room') + badges;
+    // Box number/total - boxes are publicly readable, so we can fetch
+    // this directly without needing the RPC.
+    const { data: allBoxes } = await supabaseClient
+      .from('boxes')
+      .select('id')
+      .eq('shipment_id', box.shipment_id)
+      .order('created_date', { ascending: true });
 
-    const unit = box.metric === false ? 'in' : 'cm';
-    const weightUnit = box.metric === false ? 'lb' : 'kg';
+    const boxList = allBoxes || [];
+    const boxNumber = boxList.findIndex(b => b.id === box.id) + 1;
+    const totalBoxes = boxList.length;
+
+    document.getElementById('boxNumberLine').innerHTML =
+      `Box ${boxNumber} of ${totalBoxes}${box.room ? ' <span class="room-tag">— ' + escapeHtml(box.room) + '</span>' : ''}`;
+
+    const unit = box.is_imperial ? 'in' : 'cm';
+    const weightUnit = box.is_imperial ? 'lb' : 'kg';
     let dimsText = '';
     if (box.height && box.width && box.length) {
-      dimsText += `${box.height} × ${box.width} × ${box.length} ${unit}`;
+      dimsText += `${box.height} × ${box.length} × ${box.width} ${unit}`;
     }
     if (box.weight) {
-      dimsText += (dimsText ? ' · ' : '') + `${box.weight} ${weightUnit}`;
+      dimsText += (dimsText ? ' ⬝ ' : '') + `${box.weight} ${weightUnit}`;
     }
-    document.getElementById('dims').textContent = dimsText || 'No dimensions recorded';
+    document.getElementById('dimsLine').textContent = dimsText || 'No dimensions recorded';
 
-    // Check if the current user owns the parent shipment (RLS-enforced) - if so, show Edit link
+    let badgesHtml = '';
+    if (box.is_heavy) badgesHtml += `<div class="icon-badge">${heavyIcon()} HEAVY</div>`;
+    if (box.is_fragile) badgesHtml += `<div class="icon-badge">${fragileIcon()} FRAGILE</div>`;
+    document.getElementById('badgesRow').innerHTML = badgesHtml;
+
+    // Shipment name + destination are shown to anyone (this is meant
+    // to work like a shipping label - who it's for, what's inside),
+    // via a scoped RPC that only returns the one row tied to this
+    // box_id, not the whole shipments/destination tables.
+    const { data: info, error: infoError } = await supabaseClient
+      .rpc('get_box_shipment_info', { box_id_input: boxId });
+
+    if (!infoError && info && info.length > 0) {
+      const row = info[0];
+      const shipNameEl = document.getElementById('shipmentNameLine');
+      shipNameEl.textContent = row.shipment_name || 'Untitled shipment';
+      shipNameEl.style.display = 'block';
+
+      const lines = [];
+      if (row.destination_name) lines.push(`<div class="contact-name">${escapeHtml(row.destination_name)}</div>`);
+
+      const addressLine = [row.address_line_1, row.address_line_2].filter(Boolean).join(', ');
+      if (addressLine) lines.push(`<div class="address-line">${escapeHtml(addressLine)}</div>`);
+
+      const regionLine = [row.suburb, row.postcode, row.state, row.country].filter(Boolean).join(', ');
+      if (regionLine) lines.push(`<div class="address-line">${escapeHtml(regionLine)}</div>`);
+
+      if (row.destination_phone) lines.push(`<div class="contact-line">${escapeHtml(row.destination_phone)}</div>`);
+      if (row.destination_email) lines.push(`<div class="contact-line">${escapeHtml(row.destination_email)}</div>`);
+
+      document.getElementById('destinationBlock').innerHTML = lines.join('');
+    }
+
+    // Edit link is separate from the above - only the actual owner
+    // gets it, checked via the normal RLS-protected shipments query.
     const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) {
       const { data: ownedShipment } = await supabaseClient
@@ -138,12 +214,20 @@
         .select('id')
         .eq('id', box.shipment_id)
         .maybeSingle();
+
       if (ownedShipment) {
         const editLink = document.getElementById('editLink');
         editLink.href = 'box_detail.html?id=' + boxId;
         editLink.style.display = 'inline-block';
         document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
       }
+    }
+
+    // Private boxes never show their contents on this page, even to the
+    // owner - the owner manages items via the Edit Box page instead.
+    if (box.is_private) {
+      document.getElementById('privateNotice').style.display = 'block';
+      return;
     }
 
     loadItems();
@@ -153,7 +237,8 @@
     const { data, error } = await supabaseClient
       .from('items')
       .select('*')
-      .eq('box_id', boxId);
+      .eq('box_id', boxId)
+      .order('description', { ascending: true });
 
     const listEl = document.getElementById('itemList');
     const emptyEl = document.getElementById('emptyItems');
@@ -168,13 +253,11 @@
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const metaParts = [];
-      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
-      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
-      if (item.material) metaParts.push(item.material);
+      const qty = item.quantity ? ` x${item.quantity}` : '';
+      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
       div.innerHTML = `
-        <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
-        <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
+        <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+        <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
       `;
       listEl.appendChild(div);
     });
