@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — Shipments</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 480px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
@@ -29,18 +32,35 @@
     font-size: 13px;
     cursor: pointer;
   }
+  .shipment-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
   .shipment-card {
+    flex: 1;
     display: block;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 14px;
-    margin-bottom: 10px;
     text-decoration: none;
     color: #1a1a1a;
+    min-width: 0;
   }
   .shipment-card:hover { border-color: #999; }
   .shipment-card .name { font-weight: 600; font-size: 16px; }
   .shipment-card .meta { color: #666; font-size: 13px; margin-top: 4px; }
+  button.delete-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    color: #c0392b;
+    font-size: 13px;
+    padding: 0 14px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
   #emptyState { color: #666; font-size: 14px; margin-bottom: 20px; }
   h2 { font-size: 16px; margin-top: 32px; }
   input {
@@ -94,10 +114,6 @@
 <div id="status"></div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
   const statusEl = document.getElementById('status');
   let currentUser = null;
 
@@ -106,25 +122,16 @@
     statusEl.className = isError ? 'error' : 'success';
   }
 
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = 'index.html';
-      return null;
-    }
-    return session.user;
-  }
-
   async function logout() {
     await supabaseClient.auth.signOut();
-    window.location.href = 'index.html';
+    window.location.href = '../index.html';
   }
 
   async function loadShipments() {
-    const { data, error } = await supabaseClient
+    const { data: shipments, error } = await supabaseClient
       .from('shipments')
       .select('*')
-      .order('created_date', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) {
       showStatus('Failed to load shipments: ' + error.message, true);
@@ -135,25 +142,63 @@
     const emptyEl = document.getElementById('emptyState');
     listEl.innerHTML = '';
 
-    if (!data || data.length === 0) {
+    if (!shipments || shipments.length === 0) {
       emptyEl.style.display = 'block';
       return;
     }
     emptyEl.style.display = 'none';
 
-    data.forEach(shipment => {
+    const shipmentIds = shipments.map(s => s.id);
+    const { data: destinations } = await supabaseClient
+      .from('destination')
+      .select('shipment_id, suburb, state, country')
+      .in('shipment_id', shipmentIds);
+
+    const destByShipment = {};
+    (destinations || []).forEach(d => { destByShipment[d.shipment_id] = d; });
+
+    shipments.forEach(shipment => {
+      const boxes = shipment.number_of_boxes ?? 0;
+      const items = shipment.number_of_items ?? 0;
+      const volume = shipment.total_volume ?? 0;
+      const weight = shipment.total_weight ?? 0;
+      const dest = destByShipment[shipment.id];
+      const destParts = dest ? [`Destination: ${dest.suburb}`, dest.state, dest.country].filter(Boolean) : [];
+
+      const row = document.createElement('div');
+      row.className = 'shipment-row';
+
       const a = document.createElement('a');
       a.className = 'shipment-card';
       a.href = 'shipment_detail.html?id=' + shipment.id;
-      const created = shipment.created_date
-        ? new Date(shipment.created_date).toLocaleDateString()
-        : '';
       a.innerHTML = `
         <div class="name">${escapeHtml(shipment.name || 'Untitled shipment')}</div>
-        <div class="meta">Created ${escapeHtml(created)}</div>
+        <div class="meta">${boxes} box${boxes === 1 ? '' : 'es'} ⬝ ${items} item${items === 1 ? '' : 's'} ⬝ ${Number(volume).toFixed(1)} L ⬝ ${Number(weight).toFixed(1)} kg</div>
+        <div class="meta">${destParts.length ? escapeHtml(destParts.join(', ')) : 'No destination set'}</div>
       `;
-      listEl.appendChild(a);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.onclick = () => deleteShipment(shipment.id);
+
+      row.appendChild(a);
+      row.appendChild(deleteBtn);
+      listEl.appendChild(row);
     });
+  }
+
+  async function deleteShipment(shipmentId) {
+    if (!confirm('Are you sure? You will lose all boxes and items.')) return;
+    if (!confirm('Are you really, really sure?')) return;
+
+    const { error } = await supabaseClient.from('shipments').delete().eq('id', shipmentId);
+    if (error) {
+      showStatus('Failed to delete shipment: ' + error.message, true);
+      return;
+    }
+    showStatus('Shipment deleted.', false);
+    loadShipments();
   }
 
   async function createShipment() {
@@ -168,7 +213,11 @@
       .from('shipments')
       .insert({
         user_id: currentUser.id,
-        name: name
+        name: name,
+        number_of_boxes: 0,
+        number_of_items: 0,
+        total_volume: 0,
+        total_weight: 0
       })
       .select();
 
@@ -180,7 +229,6 @@
     showStatus('Shipment created.', false);
     document.getElementById('name').value = '';
 
-    // Jump straight into the new shipment to fill in destination + boxes
     if (data && data[0]) {
       window.location.href = 'shipment_detail.html?id=' + data[0].id;
     } else {
@@ -188,14 +236,8 @@
     }
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
   async function init() {
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
     currentUser = user;
     document.getElementById('userEmail').textContent = user.email;
