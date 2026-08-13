@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scanifest — Edit Box</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 480px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
@@ -30,7 +33,30 @@
     padding: 6px 10px;
     color: #1a1a1a;
   }
+  a.qr-btn-full {
+    display: block;
+    text-align: center;
+    font-size: 13px;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 8px;
+    text-decoration: none;
+    margin-bottom: 10px;
+  }
+  a.qr-btn-full:hover { border-color: #999; }
+  #packingListLink { margin-bottom: 20px; }
   h2 { font-size: 15px; margin-top: 24px; margin-bottom: 10px; color: #444; }
+  .h2-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 24px;
+    margin-bottom: 10px;
+  }
+  .h2-row h2 { margin: 0; }
+  .h2-row a { font-size: 12px; color: #666; text-decoration: none; }
+  .h2-row a:hover { text-decoration: underline; }
   input[type=text], input[type=number] {
     width: 100%;
     padding: 9px;
@@ -62,9 +88,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
   }
-  .item-row .desc { font-weight: 600; font-size: 14px; }
+  .item-row .info { min-width: 0; flex: 1; }
+  .item-row .desc { font-size: 14px; font-weight: 400; }
   .item-row .meta { color: #666; font-size: 12px; margin-top: 2px; }
+  .item-row .actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  select.move-select {
+    font-size: 12px;
+    padding: 5px 6px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    max-width: 130px;
+  }
   button.delete-btn {
     background: none;
     border: 1px solid #ddd;
@@ -103,6 +139,8 @@
   <a class="back" id="backLink" href="shipments.html">← Back to shipment</a>
   <a class="view-link" id="viewLink" href="#">View public page</a>
 </header>
+<a class="qr-btn-full" id="qrCodesLink" href="#">Generate QR Code</a>
+<a class="qr-btn-full" id="packingListLink" href="#">Generate Packing List</a>
 
 <div id="editForm" style="display:none;">
   <h2>Box details</h2>
@@ -116,8 +154,8 @@
   <input type="number" step="any" id="weight" placeholder="Weight">
 
   <label class="checkbox-row">
-    <input type="checkbox" id="metric">
-    Use metric units (unchecked = imperial)
+    <input type="checkbox" id="isImperial">
+    Imperial units
   </label>
   <label class="checkbox-row">
     <input type="checkbox" id="isHeavy">
@@ -128,14 +166,17 @@
     Fragile
   </label>
   <label class="checkbox-row">
-    <input type="checkbox" id="isPublic">
-    Visible to anyone who scans the QR code (uncheck to make private)
+    <input type="checkbox" id="isPrivate">
+    Contents are private
   </label>
 
   <button class="primary" onclick="saveAll()">Save</button>
   <div id="saveIndicator">Saved</div>
 
-  <h2>Items</h2>
+  <div class="h2-row">
+    <h2>Items</h2>
+    <a id="seeAllItemsLink" href="#">See all items in this shipment</a>
+  </div>
   <div id="emptyItems" style="display:none;">No items yet — add one below.</div>
   <div id="itemList"></div>
 
@@ -153,14 +194,12 @@
 <div id="status"></div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
   const statusEl = document.getElementById('status');
   const saveIndicator = document.getElementById('saveIndicator');
   const params = new URLSearchParams(window.location.search);
   const boxId = params.get('id');
+  let currentShipmentId = null;
+  let otherBoxesForMove = []; // {id, label} for boxes in the same shipment, excluding this one
 
   function showStatus(message, isError) {
     statusEl.textContent = message;
@@ -176,21 +215,6 @@
     flashSaved._t = setTimeout(() => { saveIndicator.style.display = 'none'; }, 1500);
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = 'index.html';
-      return null;
-    }
-    return session.user;
-  }
-
   async function loadBox() {
     const { data: box, error } = await supabaseClient
       .from('boxes')
@@ -203,8 +227,6 @@
       return;
     }
 
-    // Confirm ownership via the shipment chain (RLS would block writes anyway, but check
-    // up front so the form doesn't appear editable only to fail silently on save)
     const { data: ownedShipment } = await supabaseClient
       .from('shipments')
       .select('id')
@@ -216,21 +238,41 @@
       return;
     }
 
+    currentShipmentId = box.shipment_id;
+
     document.getElementById('backLink').href = 'shipment_detail.html?id=' + box.shipment_id;
     document.getElementById('viewLink').href = 'box_info.html?id=' + boxId;
+    document.getElementById('seeAllItemsLink').href = 'item_list.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
+    document.getElementById('qrCodesLink').href = 'qr_code.html?shipment_id=' + box.shipment_id + '&box_id=' + boxId;
+    document.getElementById('packingListLink').href = 'packing_list.html?id=' + boxId;
 
     document.getElementById('room').value = box.room || '';
-    document.getElementById('height').value = box.height ?? '';
-    document.getElementById('width').value = box.width ?? '';
-    document.getElementById('length').value = box.length ?? '';
-    document.getElementById('weight').value = box.weight ?? '';
-    document.getElementById('metric').checked = box.metric !== false;
+    document.getElementById('height').value = box.height || '';
+    document.getElementById('width').value = box.width || '';
+    document.getElementById('length').value = box.length || '';
+    document.getElementById('weight').value = box.weight || '';
+    document.getElementById('isImperial').checked = !!box.is_imperial;
     document.getElementById('isHeavy').checked = !!box.is_heavy;
     document.getElementById('isFragile').checked = !!box.is_fragile;
-    document.getElementById('isPublic').checked = box.is_public !== false;
+    document.getElementById('isPrivate').checked = !!box.is_private;
 
     document.getElementById('editForm').style.display = 'block';
+
+    await loadOtherBoxesForMove();
     loadItems();
+  }
+
+  async function loadOtherBoxesForMove() {
+    const { data: allBoxes } = await supabaseClient
+      .from('boxes')
+      .select('id, room')
+      .eq('shipment_id', currentShipmentId)
+      .order('created_date', { ascending: true });
+
+    const list = allBoxes || [];
+    otherBoxesForMove = list
+      .map((b, idx) => ({ id: b.id, number: idx + 1, room: b.room }))
+      .filter(b => b.id !== boxId);
   }
 
   async function saveAll() {
@@ -240,25 +282,27 @@
       width: document.getElementById('width').value === '' ? null : parseFloat(document.getElementById('width').value),
       length: document.getElementById('length').value === '' ? null : parseFloat(document.getElementById('length').value),
       weight: document.getElementById('weight').value === '' ? null : parseFloat(document.getElementById('weight').value),
-      metric: document.getElementById('metric').checked,
+      is_imperial: document.getElementById('isImperial').checked,
       is_heavy: document.getElementById('isHeavy').checked,
       is_fragile: document.getElementById('isFragile').checked,
-      is_public: document.getElementById('isPublic').checked
+      is_private: document.getElementById('isPrivate').checked
     };
 
     const { error } = await supabaseClient.from('boxes').update(payload).eq('id', boxId);
     if (error) {
       showStatus('Failed to save: ' + error.message, true);
-    } else {
-      flashSaved();
+      return;
     }
+    await recomputeShipmentTotals(currentShipmentId);
+    flashSaved();
   }
 
   async function loadItems() {
     const { data, error } = await supabaseClient
       .from('items')
       .select('*')
-      .eq('box_id', boxId);
+      .eq('box_id', boxId)
+      .order('description', { ascending: true });
 
     const listEl = document.getElementById('itemList');
     const emptyEl = document.getElementById('emptyItems');
@@ -273,19 +317,41 @@
     data.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const metaParts = [];
-      if (item.quantity && item.quantity !== 1) metaParts.push('Qty ' + item.quantity);
-      if (item.category) metaParts.push(item.category + (item.subcategory ? ' / ' + item.subcategory : ''));
-      if (item.material) metaParts.push(item.material);
+      const qty = item.quantity ? ` x${item.quantity}` : '';
+      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
+
+      let moveOptions = '<option value="">Move to...</option>';
+      otherBoxesForMove.forEach(b => {
+        moveOptions += `<option value="${b.id}">Box ${b.number} — ${escapeHtml(b.room || 'Unassigned room')}</option>`;
+      });
+
       div.innerHTML = `
-        <div>
-          <div class="desc">${escapeHtml(item.description || 'Untitled item')}</div>
-          <div class="meta">${escapeHtml(metaParts.join(' · '))}</div>
+        <div class="info">
+          <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+          <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
         </div>
-        <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+        <div class="actions">
+          ${otherBoxesForMove.length > 0 ? `<select class="move-select" onchange="moveItem('${item.id}', this.value)">${moveOptions}</select>` : ''}
+          <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+        </div>
       `;
       listEl.appendChild(div);
     });
+  }
+
+  async function moveItem(itemId, targetBoxId) {
+    if (!targetBoxId) return;
+    const { error } = await supabaseClient
+      .from('items')
+      .update({ box_id: targetBoxId })
+      .eq('id', itemId);
+
+    if (error) {
+      showStatus('Failed to move item: ' + error.message, true);
+      return;
+    }
+    showStatus('Item moved.', false);
+    loadItems();
   }
 
   async function addItem() {
@@ -316,6 +382,7 @@
     document.getElementById('itemSubcategory').value = '';
     document.getElementById('itemMaterial').value = '';
     showStatus('Item added.', false);
+    await recomputeShipmentTotals(currentShipmentId);
     loadItems();
   }
 
@@ -325,6 +392,7 @@
       showStatus('Failed to remove item: ' + error.message, true);
       return;
     }
+    await recomputeShipmentTotals(currentShipmentId);
     loadItems();
   }
 
@@ -333,7 +401,7 @@
       showStatus('No box specified.', true);
       return;
     }
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
     loadBox();
   }
