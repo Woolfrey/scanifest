@@ -6,12 +6,15 @@
 <title>Scanifest — QR Labels</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../js/scanifest-utils.js"></script>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     max-width: 900px;
+    width: 100%;
     margin: 40px auto;
     padding: 0 20px;
+    box-sizing: border-box;
     color: #1a1a1a;
   }
   header {
@@ -100,7 +103,8 @@
     box-sizing: border-box;
     font-size: 7pt;
     font-weight: 700;
-    border: 1px solid #000;
+    border: 1px solid #c0392b;
+    color: #c0392b;
     border-radius: 2mm;
     padding: 0.5mm 1.5mm;
     white-space: nowrap;
@@ -110,7 +114,7 @@
   .label .dims-line { color: #333; margin-bottom: 2mm; }
   .label .contact-name { font-weight: 700; margin-bottom: 1mm; }
   .label .address-line { margin-bottom: 0.5mm; }
-  .label .contact-line { margin-top: 2mm; color: #333; }
+  .label .contact-line { margin-top: 1mm; color: #333; }
 
   @media print {
     header, #status, .no-print { display: none !important; }
@@ -155,14 +159,11 @@
 <div class="label-grid" id="labelGrid"></div>
 
 <script>
-  const SUPABASE_URL = 'https://svwhikfrzfnjfysutnze.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_nK1u_alsgjQj85ZvYdzOnQ_bVxWV7Ku';
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  const statusEl = document.getElementById('status');
   const params = new URLSearchParams(window.location.search);
   const shipmentId = params.get('shipment_id');
   const boxId = params.get('box_id'); // optional - present = single box mode
+
+  const statusEl = document.getElementById('status');
 
   // Base URL for QR codes: derived from this page's own URL, so it
   // adapts automatically if the repo/domain ever changes.
@@ -172,37 +173,6 @@
     statusEl.textContent = message;
     statusEl.className = isError ? 'error' : '';
     statusEl.style.display = message ? 'block' : 'none';
-  }
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str || '';
-    return div.innerHTML;
-  }
-
-  // Simple inline icons - no image assets needed, scale cleanly for print.
-  function fragileIcon() {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M12 2 L22 20 L2 20 Z" stroke-linejoin="round"/>
-      <line x1="12" y1="9" x2="12" y2="14"/>
-      <circle cx="12" cy="17" r="0.6" fill="currentColor"/>
-    </svg>`;
-  }
-  function heavyIcon() {
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <rect x="3" y="9" width="4" height="6" rx="1"/>
-      <rect x="17" y="9" width="4" height="6" rx="1"/>
-      <line x1="7" y1="12" x2="17" y2="12"/>
-    </svg>`;
-  }
-
-  async function requireAuth() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session) {
-      window.location.href = '../index.html';
-      return null;
-    }
-    return session.user;
   }
 
   async function loadAndRender() {
@@ -252,7 +222,7 @@
       const weightUnit = box.is_imperial ? 'lb' : 'kg';
       const dimsParts = [];
       if (box.height && box.width && box.length) {
-        dimsParts.push(`${box.height} × ${box.width} × ${box.length} ${unit}`);
+        dimsParts.push(`${box.height} × ${box.length} × ${box.width} ${unit}`);
       }
       if (box.weight) dimsParts.push(`${box.weight} ${weightUnit}`);
       const dimsLine = dimsParts.join(' ⬝ ') || 'Dimensions not set';
@@ -262,9 +232,6 @@
         : '';
       const regionLine = destination
         ? [destination.suburb, destination.postcode, destination.state, destination.country].filter(Boolean).join(', ')
-        : '';
-      const contactLine = destination
-        ? [destination.phone, destination.email].filter(Boolean).join(', ')
         : '';
 
       const label = document.createElement('div');
@@ -297,7 +264,8 @@
         ${destination && destination.name ? `<div class="contact-name">${escapeHtml(destination.name)}</div>` : ''}
         ${addressLine ? `<div class="address-line">${escapeHtml(addressLine)}</div>` : ''}
         ${regionLine ? `<div class="address-line">${escapeHtml(regionLine)}</div>` : ''}
-        ${contactLine ? `<div class="contact-line">${escapeHtml(contactLine)}</div>` : ''}
+        ${destination && destination.phone ? `<div class="contact-line">${escapeHtml(destination.phone)}</div>` : ''}
+        ${destination && destination.email ? `<div class="contact-line">${escapeHtml(destination.email)}</div>` : ''}
       `;
       label.appendChild(details);
 
@@ -314,7 +282,7 @@
   }
 
   async function init() {
-    const user = await requireAuth();
+    const user = await requireAuth('../index.html');
     if (!user) return;
     await loadAndRender();
   }
