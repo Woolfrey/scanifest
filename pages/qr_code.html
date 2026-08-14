@@ -46,15 +46,24 @@
   }
   #status.error { background: #fdecea; color: #c0392b; display: block; }
 
-  /* --- Label sheet --- */
+  /* --- Label sheet ---
+     No gap, no rounded corners, no individual border-per-label: each
+     label only draws its right + bottom edge, and the grid itself
+     draws the outer top + left edge. Every line is shared between
+     neighbours, so any single straight cut cleanly separates two
+     labels - same idea as a ruled cutting guide. */
   .label-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 6mm;
+    gap: 0;
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
   }
   .label {
-    border: 1px solid #000;
-    border-radius: 2mm;
+    border: none;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+    border-radius: 0;
     padding: 4mm;
     display: flex;
     gap: 4mm;
