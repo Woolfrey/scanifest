@@ -387,6 +387,8 @@
   }
 
   async function deleteItem(itemId) {
+    if (!confirm('Are you sure?')) return;
+
     const { error } = await supabaseClient.from('items').delete().eq('id', itemId);
     if (error) {
       showStatus('Failed to remove item: ' + error.message, true);
