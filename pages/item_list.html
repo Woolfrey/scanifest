@@ -92,13 +92,14 @@
     gap: 6px;
     flex-shrink: 0;
   }
-  select.move-select {
-    font-size: 12px;
-    padding: 5px 6px;
-    border: 1px solid #ccc;
+  button.edit-btn {
+    background: none;
+    border: 1px solid #ddd;
     border-radius: 6px;
-    max-width: 140px;
-    margin-bottom: 0;
+    color: #1a1a1a;
+    font-size: 12px;
+    padding: 5px 8px;
+    cursor: pointer;
   }
   button.delete-btn {
     background: none;
@@ -108,6 +109,27 @@
     font-size: 12px;
     padding: 5px 8px;
     cursor: pointer;
+  }
+  .edit-fields { flex: 1; }
+  .edit-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .edit-actions button { flex: 1; }
+  button.cancel-btn {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    color: #1a1a1a;
+    font-size: 13px;
+    padding: 8px;
+    cursor: pointer;
+  }
+  select.move-select-full {
+    width: 100%;
+    padding: 9px;
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    box-sizing: border-box;
   }
   #emptyItems { color: #666; font-size: 14px; margin: 8px 0; }
   .field-grid {
@@ -316,31 +338,101 @@
     items.forEach(item => {
       const div = document.createElement('div');
       div.className = 'item-row';
-      const qty = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : '';
-      const metaParts = [item.category, item.subcategory, item.material].filter(Boolean);
-      const boxInfo = boxMap[item.box_id];
-      const boxLabel = boxInfo ? `Box ${boxInfo.number} — ${boxInfo.room || 'Unassigned room'}` : 'Unknown box';
-
-      let moveOptions = '<option value="">Move to...</option>';
-      Object.keys(boxMap).forEach(bId => {
-        if (bId === item.box_id) return;
-        const b = boxMap[bId];
-        moveOptions += `<option value="${bId}">Box ${b.number} — ${escapeHtml(b.room || 'Unassigned room')}</option>`;
-      });
-
-      div.innerHTML = `
-        <div class="info">
-          <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
-          <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
-          <a class="box-tag" href="box_detail.html?id=${item.box_id}">${escapeHtml(boxLabel)}</a>
-        </div>
-        <div class="actions">
-          <select class="move-select" onchange="moveItem('${item.id}', this.value)">${moveOptions}</select>
-          <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
-        </div>
-      `;
+      div.id = 'item-' + item.id;
+      div.innerHTML = itemViewHtml(item);
       listEl.appendChild(div);
     });
+  }
+
+  function itemViewHtml(item) {
+    const qty = item.quantity && item.quantity !== 1 ? ` x${item.quantity}` : '';
+    const catSub = [item.category, item.subcategory].filter(Boolean).join(' / ');
+    const metaParts = [catSub, item.material].filter(Boolean);
+    const boxInfo = boxMap[item.box_id];
+    const boxLabel = boxInfo ? `Box ${boxInfo.number} — ${boxInfo.room || 'Unassigned room'}` : 'Unknown box';
+
+    return `
+      <div class="info">
+        <div class="desc"><b>${escapeHtml(item.description || 'Untitled item')}</b>${qty}</div>
+        <div class="meta">${escapeHtml(metaParts.join(' ⬝ '))}</div>
+        <a class="box-tag" href="box_detail.html?id=${item.box_id}">${escapeHtml(boxLabel)}</a>
+      </div>
+      <div class="actions">
+        <button class="edit-btn" onclick="editItem('${item.id}')">Edit</button>
+        <button class="delete-btn" onclick="deleteItem('${item.id}')">Remove</button>
+      </div>
+    `;
+  }
+
+  function itemEditHtml(item) {
+    let moveOptions = '<option value="">Keep in current box</option>';
+    Object.keys(boxMap).forEach(bId => {
+      if (bId === item.box_id) return;
+      const b = boxMap[bId];
+      moveOptions += `<option value="${bId}">Move to Box ${b.number} — ${escapeHtml(b.room || 'Unassigned room')}</option>`;
+    });
+
+    return `
+      <div class="edit-fields">
+        <input type="text" id="edit-desc-${item.id}" value="${escapeHtml(item.description || '')}" placeholder="Description">
+        <div class="field-grid">
+          <input type="number" id="edit-qty-${item.id}" value="${item.quantity || 1}" placeholder="Qty">
+          <input type="text" id="edit-cat-${item.id}" value="${escapeHtml(item.category || '')}" placeholder="Category">
+        </div>
+        <div class="field-grid">
+          <input type="text" id="edit-subcat-${item.id}" value="${escapeHtml(item.subcategory || '')}" placeholder="Subcategory">
+          <input type="text" id="edit-material-${item.id}" value="${escapeHtml(item.material || '')}" placeholder="Material (optional)">
+        </div>
+        <select id="edit-move-${item.id}" class="move-select-full">${moveOptions}</select>
+        <div class="edit-actions">
+          <button class="primary" onclick="saveItemEdit('${item.id}')">Save</button>
+          <button class="cancel-btn" onclick="cancelEditItem('${item.id}')">Cancel</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function editItem(itemId) {
+    const item = allItems.find(i => i.id === itemId);
+    const row = document.getElementById('item-' + itemId);
+    if (!item || !row) return;
+    row.innerHTML = itemEditHtml(item);
+  }
+
+  function cancelEditItem(itemId) {
+    const item = allItems.find(i => i.id === itemId);
+    const row = document.getElementById('item-' + itemId);
+    if (!item || !row) return;
+    row.innerHTML = itemViewHtml(item);
+  }
+
+  async function saveItemEdit(itemId) {
+    const description = document.getElementById('edit-desc-' + itemId).value.trim();
+    if (!description) {
+      showStatus('Give the item a description first.', true);
+      return;
+    }
+    const qtyRaw = document.getElementById('edit-qty-' + itemId).value;
+    const payload = {
+      description: description,
+      quantity: qtyRaw ? parseInt(qtyRaw, 10) : 1,
+      category: document.getElementById('edit-cat-' + itemId).value.trim(),
+      subcategory: document.getElementById('edit-subcat-' + itemId).value.trim(),
+      material: document.getElementById('edit-material-' + itemId).value.trim()
+    };
+
+    const moveSelect = document.getElementById('edit-move-' + itemId);
+    const targetBoxId = moveSelect ? moveSelect.value : '';
+    if (targetBoxId) payload.box_id = targetBoxId;
+
+    const { error } = await supabaseClient.from('items').update(payload).eq('id', itemId);
+    if (error) {
+      showStatus('Failed to save item: ' + error.message, true);
+      return;
+    }
+    showStatus(targetBoxId ? 'Item updated and moved.' : 'Item updated.', false);
+    await recomputeShipmentTotals(shipmentId);
+    await loadData();
   }
 
   function csvEscape(val) {
@@ -377,21 +469,6 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
-
-  async function moveItem(itemId, targetBoxId) {
-    if (!targetBoxId) return;
-    const { error } = await supabaseClient
-      .from('items')
-      .update({ box_id: targetBoxId })
-      .eq('id', itemId);
-
-    if (error) {
-      showStatus('Failed to move item: ' + error.message, true);
-      return;
-    }
-    showStatus('Item moved.', false);
-    await loadData();
   }
 
   async function deleteItem(itemId) {
